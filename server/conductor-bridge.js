@@ -7,10 +7,15 @@
  *
  * Translates stream-json events from the CLI into NormalizedMessage format,
  * matching the interface used by queryClaudeSDK().
+ *
+ * CLI stream-json event types (with --verbose):
+ *   { type: "system", subtype: "init", session_id, cwd, tools, model, ... }
+ *   { type: "assistant", message: { role: "assistant", content: [{type:"thinking",...}, {type:"text",...}, {type:"tool_use",...}] }, session_id }
+ *   { type: "user", message: { role: "user", content: [{type:"tool_result",...}] }, session_id }
+ *   { type: "result", subtype: "success"|"error", result, session_id, modelUsage, ... }
  */
 
 import { createNormalizedMessage } from './providers/types.js';
-import { claudeAdapter } from './providers/claude/adapter.js';
 
 const PROVIDER = 'claude';
 
@@ -19,11 +24,6 @@ const PROVIDER = 'claude';
  * normalized events to the given writer (WebSocketWriter or SSEStreamWriter).
  *
  * This is the containerized alternative to queryClaudeSDK().
- *
- * @param {string} command - User prompt
- * @param {object} options - Session options (projectPath, sessionId, model, useContainer, role, etc.)
- * @param {object} writer - WebSocketWriter instance
- * @param {object} conductor - { processManager, mcpBroker, contextMonitor }
  */
 export async function queryClaudeContainerized(command, options = {}, writer, conductor) {
   const { processManager, mcpBroker } = conductor;
@@ -47,9 +47,6 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     }));
   }
 
-  // Get MCP config for inter-agent communication
-  const mcpConfig = mcpBroker.getMCPConfig('pending');
-
   let agentId;
   try {
     agentId = await processManager.spawn({
@@ -57,7 +54,6 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       projectId: workingDir,
       sessionId: sessionId || undefined,
       useContainer,
-      mcpConfig,
       role,
     });
   } catch (err) {
@@ -70,75 +66,130 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     return;
   }
 
-  // Send session_created if this is a new session
-  if (!sessionId) {
-    writer.send(createNormalizedMessage({
-      kind: 'session_created',
-      newSessionId: agentId,
-      sessionId: agentId,
-      provider: PROVIDER,
-    }));
-  }
+  // Track the real session ID from the CLI (set on init event)
+  let realSessionId = sessionId || agentId;
 
   if (writer.setSessionId) {
-    writer.setSessionId(sessionId || agentId);
+    writer.setSessionId(realSessionId);
   }
 
   // Bridge stream-json events → NormalizedMessage → writer
   const eventHandler = ({ agentId: eid, event }) => {
     if (eid !== agentId) return;
 
-    const sid = sessionId || agentId;
-
-    // Try normalizing via the Claude adapter (handles content_block_delta,
-    // content_block_stop, assistant messages, tool_use, tool_result, thinking, etc.)
-    const normalized = claudeAdapter.normalizeMessage(event, sid);
-    if (normalized.length > 0) {
-      for (const msg of normalized) {
-        if (event.parent_tool_use_id && !msg.parentToolUseId) {
-          msg.parentToolUseId = event.parent_tool_use_id;
-        }
-        writer.send(msg);
-      }
-      return;
-    }
-
-    // Handle stream-json specific events that the adapter doesn't cover
+    // ── system init: capture session_id ──────────────────────────────────
     if (event.type === 'system' && event.subtype === 'init') {
-      // Session init — capture the session_id from CLI
       if (event.session_id) {
+        realSessionId = event.session_id;
+        if (writer.setSessionId) {
+          writer.setSessionId(realSessionId);
+        }
         writer.send(createNormalizedMessage({
           kind: 'session_created',
-          newSessionId: event.session_id,
-          sessionId: event.session_id,
+          newSessionId: realSessionId,
+          sessionId: realSessionId,
           provider: PROVIDER,
         }));
-        if (writer.setSessionId) {
-          writer.setSessionId(event.session_id);
-        }
       }
       return;
     }
 
-    if (event.type === 'result') {
-      // Extract token budget from result
-      const usage = event.usage || event.modelUsage;
-      if (usage) {
-        const modelKey = typeof usage === 'object' ? Object.keys(usage)[0] : null;
-        const modelData = modelKey ? usage[modelKey] : usage;
-        if (modelData) {
-          const inputTokens = modelData.cumulativeInputTokens || modelData.inputTokens || modelData.input_tokens || 0;
-          const outputTokens = modelData.cumulativeOutputTokens || modelData.outputTokens || modelData.output_tokens || 0;
-          const contextWindow = parseInt(process.env.CONTEXT_WINDOW) || 160000;
+    // ── assistant message: extract content blocks ────────────────────────
+    if (event.type === 'assistant' && event.message?.content) {
+      const content = event.message.content;
+      const parentToolUseId = event.parent_tool_use_id || null;
+
+      for (const block of content) {
+        if (block.type === 'thinking' && block.thinking) {
           writer.send(createNormalizedMessage({
-            kind: 'status',
-            text: 'token_budget',
-            tokenBudget: { used: inputTokens + outputTokens, total: contextWindow },
-            sessionId: sid,
+            kind: 'thinking',
+            content: block.thinking,
+            sessionId: realSessionId,
+            provider: PROVIDER,
+            ...(parentToolUseId && { parentToolUseId }),
+          }));
+        } else if (block.type === 'text' && block.text) {
+          writer.send(createNormalizedMessage({
+            kind: 'text',
+            role: 'assistant',
+            content: block.text,
+            sessionId: realSessionId,
+            provider: PROVIDER,
+            ...(parentToolUseId && { parentToolUseId }),
+          }));
+        } else if (block.type === 'tool_use') {
+          writer.send(createNormalizedMessage({
+            kind: 'tool_use',
+            toolName: block.name,
+            toolInput: block.input,
+            toolId: block.id,
+            sessionId: realSessionId,
+            provider: PROVIDER,
+            ...(parentToolUseId && { parentToolUseId }),
+          }));
+        }
+      }
+
+      // Send token budget from usage data on assistant messages
+      if (event.message.usage) {
+        const u = event.message.usage;
+        const used = (u.input_tokens || 0) + (u.output_tokens || 0)
+          + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        const contextWindow = parseInt(process.env.CONTEXT_WINDOW) || 160000;
+        writer.send(createNormalizedMessage({
+          kind: 'status',
+          text: 'token_budget',
+          tokenBudget: { used, total: contextWindow },
+          sessionId: realSessionId,
+          provider: PROVIDER,
+        }));
+      }
+      return;
+    }
+
+    // ── user message (tool results coming back) ──────────────────────────
+    if (event.type === 'user' && event.message?.content) {
+      for (const block of event.message.content) {
+        if (block.type === 'tool_result') {
+          writer.send(createNormalizedMessage({
+            kind: 'tool_result',
+            toolId: block.tool_use_id || '',
+            content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+            isError: Boolean(block.is_error),
+            sessionId: realSessionId,
             provider: PROVIDER,
           }));
         }
       }
+      return;
+    }
+
+    // ── result: session complete ─────────────────────────────────────────
+    if (event.type === 'result') {
+      // Extract final token budget from modelUsage
+      if (event.modelUsage) {
+        const modelKey = Object.keys(event.modelUsage)[0];
+        const m = event.modelUsage[modelKey];
+        if (m) {
+          const used = (m.inputTokens || 0) + (m.outputTokens || 0)
+            + (m.cacheReadInputTokens || 0) + (m.cacheCreationInputTokens || 0);
+          const contextWindow = parseInt(process.env.CONTEXT_WINDOW) || 160000;
+          writer.send(createNormalizedMessage({
+            kind: 'status',
+            text: 'token_budget',
+            tokenBudget: { used, total: contextWindow },
+            sessionId: realSessionId,
+            provider: PROVIDER,
+          }));
+        }
+      }
+      // Note: completion is sent on agent:exit, not here, since the CLI
+      // process may still be running (interactive mode)
+      return;
+    }
+
+    // ── rate_limit_event: ignore silently ────────────────────────────────
+    if (event.type === 'rate_limit_event') {
       return;
     }
   };
@@ -148,7 +199,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     writer.send(createNormalizedMessage({
       kind: 'error',
       content: error,
-      sessionId: sessionId || agentId,
+      sessionId: realSessionId,
       provider: PROVIDER,
     }));
   };
@@ -159,7 +210,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     writer.send(createNormalizedMessage({
       kind: 'complete',
       exitCode: code,
-      sessionId: sessionId || agentId,
+      sessionId: realSessionId,
       provider: PROVIDER,
     }));
   };

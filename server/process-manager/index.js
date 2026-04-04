@@ -98,8 +98,11 @@ export class ProcessManager extends EventEmitter {
   // ─── Private ────────────────────────────────────────────────────────────────
 
   _buildArgs(opts) {
-    const args = ['--output-format', 'stream-json', '--input-format', 'stream-json']
-    if (opts.sessionId) args.push('--resume', opts.sessionId)
+    const args = ['--output-format', 'stream-json', '--verbose']
+    if (opts.sessionId) {
+      // Resume mode: interactive, accepts stdin
+      args.push('--input-format', 'stream-json', '--resume', opts.sessionId)
+    }
     // Note: --mcp-config requires a proper MCP stdio/SSE server.
     // The conductor MCP broker uses HTTP POST which isn't compatible with
     // Claude CLI's --mcp-config flag. Inter-agent messaging will be wired
