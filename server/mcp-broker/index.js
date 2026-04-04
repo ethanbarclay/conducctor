@@ -88,13 +88,45 @@ const MCP_TOOLS = [
       required: ['prompt'],
     },
   },
+  {
+    name: 'schedule_task',
+    description: 'Create a recurring scheduled task that spawns an agent on a cron schedule. Common patterns: "*/5 * * * *" (every 5 min), "0 * * * *" (hourly), "0 9 * * *" (daily at 9am), "0 9 * * 1" (weekly Monday 9am).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Human-readable task name' },
+        cron: { type: 'string', description: 'Cron expression (e.g. "*/5 * * * *" for every 5 minutes)' },
+        prompt: { type: 'string', description: 'Prompt the scheduled agent will execute each run' },
+        role: { type: 'string', description: 'Agent role (default: "scheduled")' },
+        project_path: { type: 'string', description: 'Project directory for the agent' },
+      },
+      required: ['name', 'cron', 'prompt'],
+    },
+  },
+  {
+    name: 'list_scheduled_tasks',
+    description: 'List all scheduled tasks with their cron expressions, status, and last run time',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'delete_scheduled_task',
+    description: 'Delete a scheduled task by ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'number', description: 'ID of the task to delete' },
+      },
+      required: ['task_id'],
+    },
+  },
 ]
 
 export class MCPBroker extends EventEmitter {
-  constructor({ db, processManager, port = 3101 }) {
+  constructor({ db, processManager, scheduler, port = 3101 }) {
     super()
     this.db = db
     this.processManager = processManager
+    this.scheduler = scheduler
     this.port = port
     this._initDb()
   }
@@ -324,6 +356,40 @@ export class MCPBroker extends EventEmitter {
             text: `Agent ${newAgentId.slice(0, 8)} spawned with role "${role}". It will automatically report results back to you when done. Use read_messages() to check for replies.`,
           }],
         }
+      }
+
+      case 'schedule_task': {
+        const task = this.scheduler.createTask({
+          name: args.name,
+          cron: args.cron,
+          prompt: args.prompt,
+          role: args.role || 'scheduled',
+          projectId: args.project_path || null,
+          useContainer: true,
+        })
+        this.emit('task:created', { by: fromAgentId, task })
+        return {
+          content: [{
+            type: 'text',
+            text: `Scheduled task "${task.name}" created (ID: ${task.id}). Cron: ${task.cron_expression}. It will spawn an agent each time it fires.`,
+          }],
+        }
+      }
+
+      case 'list_scheduled_tasks': {
+        const tasks = this.scheduler.listTasks()
+        if (tasks.length === 0) {
+          return { content: [{ type: 'text', text: 'No scheduled tasks.' }] }
+        }
+        const lines = tasks.map(t =>
+          `[${t.id}] "${t.name}" — ${t.cron_expression} — ${t.enabled ? 'enabled' : 'disabled'} — last: ${t.last_run ? new Date(t.last_run * 1000).toISOString() : 'never'}`
+        )
+        return { content: [{ type: 'text', text: lines.join('\n') }] }
+      }
+
+      case 'delete_scheduled_task': {
+        this.scheduler.deleteTask(args.task_id)
+        return { content: [{ type: 'text', text: `Scheduled task ${args.task_id} deleted.` }] }
       }
 
       default:

@@ -251,13 +251,14 @@ const contextMonitor = new ContextMonitor({
 // Wire circular dependency
 processManager.contextMonitor = contextMonitor;
 
+const scheduler = new Scheduler({ db, processManager });
+
 const mcpBroker = new MCPBroker({
     db,
     processManager,
+    scheduler,
     port: parseInt(process.env.MCP_BROKER_PORT || '3101', 10),
 });
-
-const scheduler = new Scheduler({ db, processManager });
 
 // Bundle for routes
 const conductor = { processManager, containerManager, contextMonitor, mcpBroker, scheduler };
