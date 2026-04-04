@@ -63,7 +63,7 @@ export class ContainerManager extends EventEmitter {
       // Working directory — use real host path so CLI cwd matches
       '--workdir', projectPath || '/workspace',
       image,
-      'claude',
+      // Don't add 'claude' here — Dockerfile ENTRYPOINT is already ["claude"]
       ...claudeArgs,
     ]
 
