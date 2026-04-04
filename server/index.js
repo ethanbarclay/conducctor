@@ -49,6 +49,7 @@ import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getAct
 import { spawnCursor, abortCursorSession, isCursorSessionActive, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getActiveCodexSessions } from './openai-codex.js';
 import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getActiveGeminiSessions } from './gemini-cli.js';
+import { queryClaudeContainerized, sendContainerizedInput, abortContainerizedSession } from './conductor-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
@@ -1584,8 +1585,23 @@ function handleChatConnection(ws, request) {
                 console.log('📁 Project:', data.options?.projectPath || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
 
-                // Use Claude Agents SDK
-                await queryClaudeSDK(data.command, data.options, writer);
+                // Determine container mode: default ON, opt-out with useContainer=false
+                const useContainer = data.options?.useContainer !== false;
+                console.log('🐳 Container:', useContainer ? 'YES (isolated)' : 'NO (host — ⚠️  WARNING)');
+
+                if (useContainer) {
+                    // Containerized path via conductor ProcessManager + Docker
+                    await queryClaudeContainerized(data.command, data.options, writer, conductor);
+                } else {
+                    // Non-containerized fallback: warn then use SDK directly on host
+                    writer.send(createNormalizedMessage({
+                        kind: 'status',
+                        text: '⚠️  WARNING: Running without Docker container isolation. This agent has full access to your host filesystem and processes. Enable container mode for safe execution.',
+                        sessionId: data.options?.sessionId || '',
+                        provider: 'claude',
+                    }));
+                    await queryClaudeSDK(data.command, data.options, writer);
+                }
             } else if (data.type === 'cursor-command') {
                 console.log('[DEBUG] Cursor message:', data.command || '[Continue/Resume]');
                 console.log('📁 Project:', data.options?.cwd || 'Unknown');
@@ -1624,8 +1640,14 @@ function handleChatConnection(ws, request) {
                 } else if (provider === 'gemini') {
                     success = abortGeminiSession(data.sessionId);
                 } else {
-                    // Use Claude Agents SDK
-                    success = await abortClaudeSDKSession(data.sessionId);
+                    // Try conductor agents first, then SDK sessions
+                    const conductorAgent = conductor.processManager.list().find(a => a.agentId === data.sessionId || a.sessionId === data.sessionId);
+                    if (conductorAgent) {
+                        abortContainerizedSession(conductorAgent.agentId, conductor);
+                        success = true;
+                    } else {
+                        success = await abortClaudeSDKSession(data.sessionId);
+                    }
                 }
 
                 writer.send(createNormalizedMessage({ kind: 'complete', exitCode: success ? 0 : 1, aborted: true, success, sessionId: data.sessionId, provider }));
@@ -1658,8 +1680,9 @@ function handleChatConnection(ws, request) {
                 } else if (provider === 'gemini') {
                     isActive = isGeminiSessionActive(sessionId);
                 } else {
-                    // Use Claude Agents SDK
-                    isActive = isClaudeSDKSessionActive(sessionId);
+                    // Check conductor agents first, then SDK
+                    const conductorActive = conductor.processManager.list().some(a => a.agentId === sessionId || a.sessionId === sessionId);
+                    isActive = conductorActive || isClaudeSDKSessionActive(sessionId);
                     if (isActive) {
                         // Reconnect the session's writer to the new WebSocket so
                         // subsequent SDK output flows to the refreshed client.
