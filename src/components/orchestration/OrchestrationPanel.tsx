@@ -37,7 +37,7 @@ async function conductorFetch(path: string, token: string, options: RequestInit 
 
 export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }) {
   const { token } = useAuth();
-  const { agents, messages, agentEvents, isConnected } = useConductorWebSocket();
+  const { agents, messages, agentEvents, isConnected, addAgent } = useConductorWebSocket();
 
   const [spawnDialog, setSpawnDialog] = useState<SpawnDialogState>({
     open: false,
@@ -106,7 +106,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
     if (!spawnDialog.prompt.trim() || spawnDialog.spawning) return;
     setSpawnDialog((prev) => ({ ...prev, spawning: true }));
     try {
-      await conductorFetch('/agents', token, {
+      const result = await conductorFetch('/agents', token, {
         method: 'POST',
         body: JSON.stringify({
           prompt: spawnDialog.prompt,
@@ -117,6 +117,18 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
           useContainer: spawnDialog.useContainer,
         }),
       });
+      // Immediately add to grid without waiting for WebSocket
+      if (result.agentId) {
+        addAgent({
+          agentId: result.agentId,
+          role: spawnDialog.role,
+          projectId: spawnDialog.projectPath || '',
+          startedAt: Date.now(),
+          tokenUsage: { input: 0, output: 0 },
+          status: 'running',
+          contextPct: 0,
+        });
+      }
       setSpawnDialog({
         open: false,
         prompt: '',

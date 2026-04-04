@@ -308,5 +308,12 @@ export function useConductorWebSocket() {
     };
   }, [connect]);
 
-  return state;
+  const addAgent = useCallback((agent: Omit<Agent, 'busy'>) => {
+    setState((prev) => {
+      if (prev.agents.some((a) => a.agentId === agent.agentId)) return prev;
+      return { ...prev, agents: [...prev.agents, { ...agent, busy: false }] };
+    });
+  }, []);
+
+  return { ...state, addAgent };
 }

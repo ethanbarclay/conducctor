@@ -167,7 +167,8 @@ export class ProcessManager extends EventEmitter {
       if (sessionId) {
         args.push('--resume', sessionId, '-p', message)
       } else {
-        args.push('-p', message)
+        // Force a fresh session — don't auto-continue previous conversations
+        args.push('--session-id', agentId, '-p', message)
       }
 
       const proc = agent.useContainer
