@@ -1,11 +1,12 @@
 /**
  * ActivityTimeline
  *
- * Horizontal scrolling timeline with per-agent lanes and CSS-driven
- * drifting event dots. Inspired by agents-observe, built for Conducctor.
+ * Horizontal scrolling timeline with per-event-type lanes and CSS-driven
+ * drifting event dots. Each agent gets a group of lanes (thinking, text,
+ * tool, result). Dots are larger and show rich hover details.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentEvent } from './hooks/useConductorWebSocket';
 
 type TimeRange = '1m' | '5m' | '10m' | '60m';
@@ -24,33 +25,17 @@ const TICK_COUNTS: Record<TimeRange, number> = {
   '60m': 6,
 };
 
-const DOT_COLORS: Record<string, string> = {
-  thinking: 'bg-purple-500',
-  text: 'bg-blue-500',
-  tool_use: 'bg-yellow-500',
-  tool_result: 'bg-green-500',
-  error: 'bg-red-500',
-  status: 'bg-gray-500',
-};
-
-const DOT_LABELS: Record<string, string> = {
-  thinking: 'Thinking',
-  text: 'Text',
-  tool_use: 'Tool',
-  tool_result: 'Result',
-  error: 'Error',
-  status: 'Status',
-};
+const EVENT_LANES = [
+  { type: 'thinking', label: 'Think', color: 'bg-purple-500', dotBorder: 'ring-purple-400/40' },
+  { type: 'text', label: 'Text', color: 'bg-blue-500', dotBorder: 'ring-blue-400/40' },
+  { type: 'tool_use', label: 'Tool', color: 'bg-yellow-500', dotBorder: 'ring-yellow-400/40' },
+  { type: 'tool_result', label: 'Result', color: 'bg-green-500', dotBorder: 'ring-green-400/40' },
+  { type: 'error', label: 'Error', color: 'bg-red-500', dotBorder: 'ring-red-400/40' },
+] as const;
 
 const AGENT_COLORS = [
-  'text-blue-400',
-  'text-green-400',
-  'text-purple-400',
-  'text-yellow-400',
-  'text-pink-400',
-  'text-cyan-400',
-  'text-orange-400',
-  'text-red-400',
+  'text-blue-400', 'text-green-400', 'text-purple-400', 'text-yellow-400',
+  'text-pink-400', 'text-cyan-400', 'text-orange-400', 'text-red-400',
 ];
 
 interface AgentInfo {
@@ -66,32 +51,60 @@ interface TimelineEvent extends AgentEvent {
 interface ActivityTimelineProps {
   agents: AgentInfo[];
   agentEvents: Record<string, AgentEvent[]>;
-  onEventClick?: (agentId: string, event: AgentEvent) => void;
 }
 
-// ─── Drifting Dots ──────────────────────────────────────────────────────────
+// ─── Hover tooltip ──────────────────────────────────────────────────────────
+
+function DotTooltip({ event, style }: { event: TimelineEvent; style: React.CSSProperties }) {
+  const time = new Date(event.timestamp).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const lane = EVENT_LANES.find((l) => l.type === event.type);
+
+  return (
+    <div
+      className="pointer-events-none absolute z-50 w-72 rounded-lg border border-border bg-popover p-3 shadow-xl"
+      style={style}
+    >
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className={`h-2.5 w-2.5 rounded-full ${lane?.color || 'bg-gray-500'}`} />
+        <span className="text-xs font-semibold text-foreground">{lane?.label || event.type}</span>
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{time}</span>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground break-words">
+        {event.content.length > 300 ? event.content.slice(0, 300) + '...' : event.content}
+      </p>
+    </div>
+  );
+}
+
+// ─── Drifting Dot ───────────────────────────────────────────────────────────
 
 function DriftingDot({
   event,
   rangeMs,
   generation,
+  onHover,
+  onLeave,
 }: {
   event: TimelineEvent;
   rangeMs: number;
   generation: number;
+  onHover: (event: TimelineEvent, rect: DOMRect) => void;
+  onLeave: () => void;
 }) {
   const age = Date.now() - event.timestamp;
   const position = 100 - (age / rangeMs) * 100;
   if (position < -10 || position > 100) return null;
 
   const remainingMs = Math.max(0, rangeMs - age);
-  const color = DOT_COLORS[event.type] || 'bg-gray-400';
-  const label = DOT_LABELS[event.type] || event.type;
+  const lane = EVENT_LANES.find((l) => l.type === event.type);
+  const color = lane?.color || 'bg-gray-400';
+  const ring = lane?.dotBorder || 'ring-gray-400/40';
 
   return (
     <button
-      key={`${event.id}-${generation}`}
-      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-150"
+      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-[1.6] ${ring} ring-2 rounded-full`}
       style={{ left: `${position}%` }}
       ref={(el) => {
         if (!el) return;
@@ -100,67 +113,58 @@ function DriftingDot({
           el.style.left = '-5%';
         });
       }}
-      title={`${label}: ${event.content.slice(0, 80)}`}
+      onMouseEnter={(e) => onHover(event, e.currentTarget.getBoundingClientRect())}
+      onMouseLeave={onLeave}
     >
-      <span className={`flex h-3 w-3 items-center justify-center rounded-full ${color} shadow-sm`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+      <span className={`flex h-4 w-4 items-center justify-center rounded-full ${color} shadow-md`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
       </span>
     </button>
   );
 }
 
-// ─── Agent Lane ─────────────────────────────────────────────────────────────
+// ─── Type Lane ──────────────────────────────────────────────────────────────
 
-function AgentLane({
-  agent,
+function TypeLane({
+  laneConfig,
   events,
   rangeMs,
   generation,
-  color,
-  ticks,
+  onHover,
+  onLeave,
+  isFirst,
 }: {
-  agent: AgentInfo;
+  laneConfig: typeof EVENT_LANES[number];
   events: TimelineEvent[];
   rangeMs: number;
   generation: number;
-  color: string;
-  ticks: { pct: number; label: string }[];
+  onHover: (event: TimelineEvent, rect: DOMRect) => void;
+  onLeave: () => void;
+  isFirst: boolean;
 }) {
   const visibleEvents = useMemo(
-    () => events.filter((e) => Date.now() - e.timestamp < rangeMs),
-    [events, rangeMs],
+    () => events.filter((e) => e.type === laneConfig.type && Date.now() - e.timestamp < rangeMs),
+    [events, laneConfig.type, rangeMs],
   );
 
   return (
-    <div className="flex h-8 items-center border-b border-border/20">
-      {/* Agent label */}
-      <div className={`w-28 shrink-0 truncate px-2 text-[10px] font-medium ${color}`}>
-        {agent.role}
-        <span className="ml-1 text-muted-foreground/50">
-          ({agent.agentId.slice(0, 6)})
-        </span>
+    <div className={`flex h-10 items-center ${isFirst ? '' : 'border-t border-border/10'}`}>
+      {/* Lane label */}
+      <div className="flex w-16 shrink-0 items-center gap-1.5 px-2">
+        <span className={`h-1.5 w-1.5 rounded-full ${laneConfig.color}`} />
+        <span className="text-[9px] text-muted-foreground/70">{laneConfig.label}</span>
       </div>
 
-      {/* Lane */}
+      {/* Dot area */}
       <div className="relative h-full flex-1 overflow-hidden">
-        {/* Tick lines */}
-        {ticks.map(({ pct, label }) => (
-          <div
-            key={label}
-            className="absolute bottom-0 top-0"
-            style={{ left: `${pct}%` }}
-          >
-            <div className="h-full w-px border-l border-border/15" />
-          </div>
-        ))}
-
-        {/* Event dots */}
         {visibleEvents.map((event) => (
           <DriftingDot
             key={`${event.id}-${generation}`}
             event={event}
             rangeMs={rangeMs}
             generation={generation}
+            onHover={onHover}
+            onLeave={onLeave}
           />
         ))}
       </div>
@@ -170,9 +174,18 @@ function AgentLane({
 
 // ─── Main Timeline ──────────────────────────────────────────────────────────
 
-export default function ActivityTimeline({ agents, agentEvents, onEventClick }: ActivityTimelineProps) {
+export default function ActivityTimeline({ agents, agentEvents }: ActivityTimelineProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('5m');
   const rangeMs = RANGE_MS[timeRange];
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Hover state
+  const [hoveredEvent, setHoveredEvent] = useState<{ event: TimelineEvent; rect: DOMRect } | null>(null);
+
+  const handleHover = (event: TimelineEvent, rect: DOMRect) => {
+    setHoveredEvent({ event, rect });
+  };
+  const handleLeave = () => setHoveredEvent(null);
 
   // Periodic re-render to clean up expired dots
   const [, setTick] = useState(0);
@@ -181,7 +194,7 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
     return () => clearInterval(id);
   }, []);
 
-  // Generation counter — increments on range change to force dot remount
+  // Generation counter for range changes
   const generationRef = useRef(0);
   const prevRangeRef = useRef(rangeMs);
   if (prevRangeRef.current !== rangeMs) {
@@ -190,7 +203,7 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
   }
   const generation = generationRef.current;
 
-  // Build tick marks
+  // Tick marks
   const ticks = useMemo(() => {
     const count = TICK_COUNTS[timeRange];
     const rangeSec = rangeMs / 1000;
@@ -208,7 +221,7 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
     return result;
   }, [timeRange, rangeMs]);
 
-  // Build flat events per agent
+  // Flat events per agent
   const agentTimelineEvents = useMemo(() => {
     const map: Record<string, TimelineEvent[]> = {};
     for (const agent of agents) {
@@ -220,18 +233,30 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
     return map;
   }, [agents, agentEvents]);
 
-  // Agent color map
   const colorMap = useMemo(() => {
     const m = new Map<string, string>();
     agents.forEach((a, i) => m.set(a.agentId, AGENT_COLORS[i % AGENT_COLORS.length]));
     return m;
   }, [agents]);
 
+  // Tooltip position relative to container
+  const tooltipStyle = useMemo((): React.CSSProperties | null => {
+    if (!hoveredEvent || !containerRef.current) return null;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const dotRect = hoveredEvent.rect;
+    let left = dotRect.left - containerRect.left - 144; // center the 288px tooltip
+    left = Math.max(4, Math.min(left, containerRect.width - 292));
+    return {
+      left,
+      bottom: containerRect.bottom - dotRect.top + 8,
+    };
+  }, [hoveredEvent]);
+
   if (agents.length === 0) return null;
 
   return (
-    <div className="border-b border-border bg-card">
-      {/* Header with time range selector */}
+    <div className="relative border-b border-border bg-card" ref={containerRef}>
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-border/30 px-3 py-1">
         <span className="text-[10px] font-medium text-muted-foreground">Timeline</span>
         <div className="flex items-center gap-0.5">
@@ -251,14 +276,14 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
         </div>
       </div>
 
-      {/* Tick labels row */}
-      <div className="flex h-4 items-center">
-        <div className="w-28 shrink-0" />
+      {/* Tick labels */}
+      <div className="flex h-4 items-end">
+        <div className="w-16 shrink-0" />
         <div className="relative flex-1">
           {ticks.map(({ pct, label }) => (
             <span
               key={label}
-              className="absolute -translate-x-1/2 text-[7px] text-muted-foreground/50"
+              className="absolute -translate-x-1/2 text-[7px] text-muted-foreground/40"
               style={{ left: `${pct}%` }}
             >
               {label}
@@ -267,18 +292,64 @@ export default function ActivityTimeline({ agents, agentEvents, onEventClick }: 
         </div>
       </div>
 
-      {/* Agent lanes */}
-      {agents.map((agent) => (
-        <AgentLane
-          key={agent.agentId}
-          agent={agent}
-          events={agentTimelineEvents[agent.agentId] || []}
-          rangeMs={rangeMs}
-          generation={generation}
-          color={colorMap.get(agent.agentId) || 'text-muted-foreground'}
-          ticks={ticks}
-        />
-      ))}
+      {/* Agent groups */}
+      {agents.map((agent, agentIdx) => {
+        const color = colorMap.get(agent.agentId) || 'text-muted-foreground';
+        const events = agentTimelineEvents[agent.agentId] || [];
+
+        return (
+          <div key={agent.agentId} className={agentIdx > 0 ? 'border-t border-border/30' : ''}>
+            {/* Agent header */}
+            <div className="flex h-6 items-center border-b border-border/15 bg-muted/20 px-2">
+              <span className={`text-[10px] font-semibold ${color}`}>
+                {agent.role}
+              </span>
+              <span className="ml-1 text-[9px] text-muted-foreground/50">
+                ({agent.agentId.slice(0, 8)})
+              </span>
+              <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[8px] font-medium ${
+                agent.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                agent.status === 'idle' ? 'bg-muted text-muted-foreground' :
+                'bg-red-500/20 text-red-400'
+              }`}>
+                {agent.status}
+              </span>
+            </div>
+
+            {/* Type lanes */}
+            {EVENT_LANES.map((lane, laneIdx) => (
+              <TypeLane
+                key={lane.type}
+                laneConfig={lane}
+                events={events}
+                rangeMs={rangeMs}
+                generation={generation}
+                onHover={handleHover}
+                onLeave={handleLeave}
+                isFirst={laneIdx === 0}
+              />
+            ))}
+
+            {/* Tick gridlines (overlaid on lanes) */}
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0" style={{ left: '64px' }}>
+              {ticks.map(({ pct, label }) => (
+                <div
+                  key={`grid-${agent.agentId}-${label}`}
+                  className="absolute top-0 bottom-0"
+                  style={{ left: `${pct}%` }}
+                >
+                  <div className="h-full w-px border-l border-border/10" />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Hover tooltip */}
+      {hoveredEvent && tooltipStyle && (
+        <DotTooltip event={hoveredEvent.event} style={tooltipStyle} />
+      )}
     </div>
   );
 }
