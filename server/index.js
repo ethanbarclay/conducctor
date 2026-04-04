@@ -68,11 +68,19 @@ import pluginsRoutes from './routes/plugins.js';
 import messagesRoutes from './routes/messages.js';
 import { createNormalizedMessage } from './providers/types.js';
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
-import { initializeDatabase, sessionNamesDb, applyCustomSessionNames } from './database/db.js';
+import { db, initializeDatabase, sessionNamesDb, applyCustomSessionNames } from './database/db.js';
 import { configureWebPush } from './services/vapid-keys.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
+
+// ─── Conductor modules ──────────────────────────────────────────────────────
+import { ProcessManager } from './process-manager/index.js';
+import { ContainerManager } from './container-manager/index.js';
+import { MCPBroker } from './mcp-broker/index.js';
+import { ContextMonitor } from './context-monitor/index.js';
+import { Scheduler } from './scheduler/index.js';
+import conductorRoutes from './routes/conductor.js';
 
 const VALID_PROVIDERS = ['claude', 'codex', 'cursor', 'gemini'];
 
@@ -223,6 +231,36 @@ async function setupProjectsWatcher() {
 const app = express();
 const server = http.createServer(app);
 
+// ─── Conductor: instantiate orchestration modules ────────────────────────────
+const containerManager = new ContainerManager({
+    mcpBrokerPort: parseInt(process.env.MCP_BROKER_PORT || '3101', 10),
+});
+
+const processManager = new ProcessManager({
+    db,
+    contextMonitor: null, // set after contextMonitor is created
+    containerManager,
+});
+
+const contextMonitor = new ContextMonitor({
+    db,
+    processManager,
+    defaultAutoCompactThreshold: parseFloat(process.env.AUTO_COMPACT_THRESHOLD || '0.75'),
+});
+// Wire circular dependency
+processManager.contextMonitor = contextMonitor;
+
+const mcpBroker = new MCPBroker({
+    db,
+    processManager,
+    port: parseInt(process.env.MCP_BROKER_PORT || '3101', 10),
+});
+
+const scheduler = new Scheduler({ db, processManager });
+
+// Bundle for routes
+const conductor = { processManager, containerManager, contextMonitor, mcpBroker, scheduler };
+
 const ptySessionsMap = new Map();
 const PTY_SESSION_TIMEOUT = 30 * 60 * 1000;
 const SHELL_URL_PARSE_BUFFER_LIMIT = 32768;
@@ -329,6 +367,7 @@ const wss = new WebSocketServer({
 
 // Make WebSocket server available to routes
 app.locals.wss = wss;
+app.locals.conductor = conductor;
 
 app.use(cors({ exposedHeaders: ['X-Refreshed-Token'] }));
 app.use(express.json({
@@ -403,6 +442,9 @@ app.use('/api/sessions', authenticateToken, messagesRoutes);
 
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);
+
+// Conductor orchestration API Routes (protected)
+app.use('/api/conductor', authenticateToken, conductorRoutes);
 
 // Serve public files (like api-docs.html)
 app.use(express.static(path.join(__dirname, '../public')));
@@ -1419,6 +1461,53 @@ function handlePluginWsProxy(clientWs, pathname) {
     });
 }
 
+// ─── Conductor: broadcast agent events to all /conductor-ws clients ──────────
+const conductorClients = new Set();
+
+function broadcastConductorEvent(type, payload) {
+    const message = JSON.stringify({ type, ...payload, timestamp: Date.now() });
+    conductorClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
+
+// ProcessManager events → WebSocket
+for (const evt of ['agent:spawned', 'agent:event', 'agent:thinking', 'agent:tool_use', 'agent:raw', 'agent:error', 'agent:exit', 'agent:killed']) {
+    processManager.on(evt, (payload) => broadcastConductorEvent(evt, payload));
+}
+
+// ContextMonitor events → WebSocket
+contextMonitor.on('usage', (payload) => broadcastConductorEvent('context:usage', payload));
+contextMonitor.on('warning', (payload) => broadcastConductorEvent('context:warning', payload));
+contextMonitor.on('auto-compact', (payload) => broadcastConductorEvent('context:auto-compact', payload));
+contextMonitor.on('checkpoint', (payload) => broadcastConductorEvent('context:checkpoint', payload));
+contextMonitor.on('fork', (payload) => broadcastConductorEvent('context:fork', payload));
+
+// MCPBroker events → WebSocket
+mcpBroker.on('message:sent', (payload) => broadcastConductorEvent('mcp:message', payload));
+mcpBroker.on('state:updated', (payload) => broadcastConductorEvent('mcp:state', payload));
+mcpBroker.on('review:requested', (payload) => broadcastConductorEvent('mcp:review', payload));
+
+// Scheduler events → WebSocket
+scheduler.on('task:start', (payload) => broadcastConductorEvent('scheduler:start', payload));
+scheduler.on('task:complete', (payload) => broadcastConductorEvent('scheduler:complete', payload));
+scheduler.on('task:error', (payload) => broadcastConductorEvent('scheduler:error', payload));
+
+function handleConductorConnection(ws) {
+    console.log('[INFO] Conductor WebSocket connected');
+    conductorClients.add(ws);
+    ws.on('close', () => conductorClients.delete(ws));
+
+    // Send current agent list on connect
+    ws.send(JSON.stringify({
+        type: 'conductor:init',
+        agents: processManager.list(),
+        timestamp: Date.now(),
+    }));
+}
+
 // WebSocket connection handler that routes based on URL path
 wss.on('connection', (ws, request) => {
     const url = request.url;
@@ -1432,6 +1521,8 @@ wss.on('connection', (ws, request) => {
         handleShellConnection(ws);
     } else if (pathname === '/ws') {
         handleChatConnection(ws, request);
+    } else if (pathname === '/conductor-ws') {
+        handleConductorConnection(ws);
     } else if (pathname.startsWith('/plugin-ws/')) {
         handlePluginWsProxy(ws, pathname);
     } else {
@@ -2559,15 +2650,27 @@ async function startServer() {
             startEnabledPluginServers().catch(err => {
                 console.error('[Plugins] Error during startup:', err.message);
             });
+
+            // Start Conductor services
+            mcpBroker.start();
+            scheduler.start();
+            console.log(`${c.info('[INFO]')} Conductor orchestration ready (MCP broker on port ${mcpBroker.port})`);
         });
 
-        // Clean up plugin processes on shutdown
-        const shutdownPlugins = async () => {
+        // Clean up plugin processes and conductor services on shutdown
+        const shutdown = async () => {
+            console.log('\n[INFO] Shutting down...');
+            scheduler.stop();
+            mcpBroker.stop();
+            // Kill any running conductor agents
+            for (const agent of processManager.list()) {
+                processManager.kill(agent.agentId);
+            }
             await stopAllPlugins();
             process.exit(0);
         };
-        process.on('SIGTERM', () => void shutdownPlugins());
-        process.on('SIGINT', () => void shutdownPlugins());
+        process.on('SIGTERM', () => void shutdown());
+        process.on('SIGINT', () => void shutdown());
     } catch (error) {
         console.error('[ERROR] Failed to start server:', error);
         process.exit(1);
