@@ -121,7 +121,7 @@ export class ProcessManager extends EventEmitter {
 
   _writeStdin(proc, message) {
     const payload = JSON.stringify({
-      type: 'user_message',
+      type: 'user',
       message: { role: 'user', content: message },
     }) + '\n'
     proc.stdin.write(payload)
