@@ -147,6 +147,14 @@ async function setupProjectsWatcher() {
         }
 
         projectsWatcherDebounceTimer = setTimeout(async () => {
+            // Suppress file watcher during active conductor turns to prevent
+            // duplicate messages (container writes session files that trigger
+            // a project refresh while the bridge is still streaming)
+            const hasActiveTurns = conductor.processManager.list().some(a => a.busy);
+            if (hasActiveTurns) {
+                return;
+            }
+
             // Prevent reentrant calls
             if (isGetProjectsRunning) {
                 return;
