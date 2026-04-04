@@ -7,6 +7,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useConductorWebSocket, type AgentEvent } from './hooks/useConductorWebSocket';
+import ActivityTimeline from './ActivityTimeline';
 
 type EventFilter = 'all' | 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'error';
 
@@ -184,6 +185,9 @@ export default function ObservabilityPanel({ isVisible }: { isVisible: boolean }
           })}
         </div>
       )}
+
+      {/* Activity timeline */}
+      <ActivityTimeline agents={agents} agentEvents={agentEvents} />
 
       {/* Event stream */}
       <div className="flex-1 overflow-y-auto">
