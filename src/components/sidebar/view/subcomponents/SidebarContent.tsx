@@ -1,14 +1,19 @@
 import { type ReactNode, useMemo } from 'react';
-import { Folder, MessageSquare, Search } from 'lucide-react';
+import { Folder, MessageSquare, Search, Cpu } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import { ScrollArea } from '../../../../shared/view/ui';
 import type { Project, ProjectSession } from '../../../../types/app';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import type { ConversationSearchResults, SearchProgress } from '../../hooks/useSidebarController';
 import { getAllSessions, getSessionDate, getSessionName } from '../../utils/utils';
+import { useConductorWebSocket } from '../../../orchestration/hooks/useConductorWebSocket';
 import SidebarFooter from './SidebarFooter';
 import SidebarHeader from './SidebarHeader';
 import SidebarProjectList, { type SidebarProjectListProps } from './SidebarProjectList';
+
+type FlatItem =
+  | { kind: 'session'; session: ProjectSession & { __provider?: string }; projectName: string; projectDisplayName: string }
+  | { kind: 'agent'; agentId: string; role: string; status: string; projectId: string; startedAt: number };
 
 type SearchMode = 'projects' | 'conversations';
 
@@ -93,23 +98,48 @@ export default function SidebarContent({
   const showFlatConversations = searchMode === 'conversations' && searchFilter.trim().length < 2;
   const hasPartialResults = conversationResults && conversationResults.results.length > 0;
 
-  // Flat recency-sorted sessions across all projects
-  const flatSessions = useMemo(() => {
+  // Conductor agents for sidebar integration
+  const { agents: conductorAgents } = useConductorWebSocket();
+
+  // Flat recency-sorted sessions + conductor agents
+  const flatItems = useMemo((): FlatItem[] => {
     if (!showFlatConversations) return [];
-    const all: Array<{ session: ProjectSession & { __provider?: string }; projectName: string; projectDisplayName: string }> = [];
+    const items: FlatItem[] = [];
+
+    // Add sessions
     for (const project of projects) {
       const sessions = getAllSessions(project, {});
       for (const session of sessions) {
-        all.push({
+        items.push({
+          kind: 'session',
           session,
           projectName: project.name,
           projectDisplayName: project.displayName || project.name,
         });
       }
     }
-    all.sort((a, b) => getSessionDate(b.session).getTime() - getSessionDate(a.session).getTime());
-    return all.slice(0, 50);
-  }, [showFlatConversations, projects]);
+
+    // Add conductor agents
+    for (const agent of conductorAgents) {
+      items.push({
+        kind: 'agent',
+        agentId: agent.agentId,
+        role: agent.role,
+        status: agent.status,
+        projectId: agent.projectId || '',
+        startedAt: agent.startedAt,
+      });
+    }
+
+    // Sort by recency
+    items.sort((a, b) => {
+      const timeA = a.kind === 'session' ? getSessionDate(a.session).getTime() : a.startedAt;
+      const timeB = b.kind === 'session' ? getSessionDate(b.session).getTime() : b.startedAt;
+      return timeB - timeA;
+    });
+
+    return items.slice(0, 50);
+  }, [showFlatConversations, projects, conductorAgents]);
 
   return (
     <div
@@ -135,17 +165,67 @@ export default function SidebarContent({
 
       <ScrollArea className="flex-1 overflow-y-auto overscroll-contain md:px-1.5 md:py-2">
         {showFlatConversations ? (
-          flatSessions.length === 0 ? (
+          flatItems.length === 0 ? (
             <div className="px-4 py-12 text-center md:py-8">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-muted md:mb-3">
                 <MessageSquare className="h-6 w-6 text-muted-foreground" />
               </div>
               <h3 className="mb-2 text-base font-medium text-foreground md:mb-1">No conversations yet</h3>
-              <p className="text-sm text-muted-foreground">Start a chat session to see it here</p>
+              <p className="text-sm text-muted-foreground">Start a chat session or spawn an agent</p>
             </div>
           ) : (
             <div className="space-y-0.5 px-1">
-              {flatSessions.map(({ session, projectName, projectDisplayName }) => {
+              {flatItems.map((item) => {
+                if (item.kind === 'agent') {
+                  const now = new Date();
+                  const diffMin = Math.floor((now.getTime() - item.startedAt) / 60000);
+                  const timeLabel = diffMin < 1 ? 'now'
+                    : diffMin < 60 ? `${diffMin}m ago`
+                    : diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago`
+                    : `${Math.floor(diffMin / 1440)}d ago`;
+                  const isRunning = item.status === 'running';
+                  const projectName = item.projectId ? item.projectId.split('/').pop() || item.projectId : '';
+
+                  return (
+                    <div
+                      key={`agent-${item.agentId}`}
+                      className="w-full rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {isRunning && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse" />
+                        )}
+                        {!isRunning && item.status !== 'stopped' && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" />
+                        )}
+                        <Cpu className="h-3 w-3 shrink-0 text-purple-400" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground capitalize">
+                          {item.role}
+                        </span>
+                        <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-medium ${
+                          isRunning ? 'bg-blue-500/20 text-blue-400' :
+                          item.status === 'idle' ? 'bg-muted text-muted-foreground' :
+                          'bg-red-500/20 text-red-400'
+                        }`}>
+                          {item.status}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{timeLabel}</span>
+                      </div>
+                      {projectName && (
+                        <div className="mt-0.5 flex items-center gap-1 pl-0">
+                          <Folder className="h-2.5 w-2.5 shrink-0 text-muted-foreground/50" />
+                          <span className="truncate text-[10px] text-muted-foreground/70">{projectName}</span>
+                        </div>
+                      )}
+                      <div className="mt-0.5 pl-0">
+                        <span className="font-mono text-[9px] text-muted-foreground/40">{item.agentId.slice(0, 12)}</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Regular session
+                const { session, projectName, projectDisplayName } = item;
                 const sessionDate = getSessionDate(session);
                 const now = new Date();
                 const diffMin = Math.floor((now.getTime() - sessionDate.getTime()) / 60000);
