@@ -15,8 +15,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const BRIDGE_SCRIPT = join(__dirname, '..', 'mcp-stdio-bridge.js')
 
 const DEFAULT_IMAGE = 'conductor-agent:latest'
-const DEFAULT_MEMORY = '2g'
-const DEFAULT_CPUS = '2'
+const DEFAULT_MEMORY = '512m'
+const DEFAULT_CPUS = '1'
 
 export class ContainerManager extends EventEmitter {
   constructor({ mcpBrokerPort = 3101, image = DEFAULT_IMAGE } = {}) {
