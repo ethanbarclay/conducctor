@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { Zap, GitFork, Save, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 
 type TokenUsagePieProps = {
@@ -52,9 +53,9 @@ export default function TokenUsagePie({ used, total, sessionId }: TokenUsagePieP
   };
 
   const actions = [
-    { id: 'compact' as const, label: 'Compact', desc: 'Summarize and free context', icon: '⚡' },
-    { id: 'fork' as const, label: 'Fork', desc: 'Branch this session', icon: '⑂' },
-    { id: 'checkpoint' as const, label: 'Checkpoint', desc: 'Save session snapshot', icon: '⊙' },
+    { id: 'compact' as const, label: 'Compact', desc: 'Summarize and free context', Icon: Zap },
+    { id: 'fork' as const, label: 'Fork', desc: 'Branch this session', Icon: GitFork },
+    { id: 'checkpoint' as const, label: 'Checkpoint', desc: 'Save session snapshot', Icon: Save },
   ];
 
   return (
@@ -94,7 +95,7 @@ export default function TokenUsagePie({ used, total, sessionId }: TokenUsagePieP
                     disabled={!!actionStatus}
                     className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent/60 disabled:opacity-50"
                   >
-                    <span className="w-4 text-center text-sm text-muted-foreground">{action.icon}</span>
+                    <action.Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-foreground">
                         {actionStatus === action.id ? `${action.label}...` : action.label}
