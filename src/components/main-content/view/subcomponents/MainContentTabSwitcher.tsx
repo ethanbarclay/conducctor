@@ -1,4 +1,4 @@
-import { MessageSquare, Terminal, Folder, GitBranch, ClipboardCheck, Cpu, Clock, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Terminal, Folder, GitBranch, ClipboardCheck, Cpu, Clock, Eye, type LucideIcon } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tooltip, PillBar, Pill } from '../../../../shared/view/ui';
@@ -40,8 +40,9 @@ const PROJECT_TABS: BuiltInTab[] = [
 ];
 
 const GLOBAL_TABS: BuiltInTab[] = [
-  { kind: 'builtin', id: 'agents',    labelKey: 'tabs.agents',    icon: Cpu },
-  { kind: 'builtin', id: 'scheduler', labelKey: 'tabs.scheduler', icon: Clock },
+  { kind: 'builtin', id: 'agents',        labelKey: 'tabs.agents',        icon: Cpu },
+  { kind: 'builtin', id: 'observability', labelKey: 'tabs.observability', icon: Eye },
+  { kind: 'builtin', id: 'scheduler',     labelKey: 'tabs.scheduler',     icon: Clock },
 ];
 
 const TASKS_TAB: BuiltInTab = {

@@ -24,7 +24,8 @@
     "git": "Source Control",
     "tasks": "Tasks",
     "agents": "Agents",
-    "scheduler": "Scheduler"
+    "scheduler": "Scheduler",
+    "observability": "Observe"
   },
   "status": {
     "loading": "Loading...",

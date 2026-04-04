@@ -14,6 +14,7 @@ import type { Project } from '../../../types/app';
 import { TaskMasterPanel } from '../../task-master';
 import OrchestrationPanel from '../../orchestration/OrchestrationPanel';
 import SchedulerPanel from '../../orchestration/SchedulerPanel';
+import ObservabilityPanel from '../../orchestration/ObservabilityPanel';
 import MainContentHeader from './subcomponents/MainContentHeader';
 import MainContentStateView from './subcomponents/MainContentStateView';
 import ErrorBoundary from './ErrorBoundary';
@@ -171,6 +172,7 @@ function MainContent({
 
           {/* Global tabs — always available regardless of project selection */}
           <OrchestrationPanel isVisible={activeTab === 'agents'} />
+          <ObservabilityPanel isVisible={activeTab === 'observability'} />
           <SchedulerPanel isVisible={activeTab === 'scheduler'} />
 
           <div className={`h-full overflow-hidden ${activeTab === 'preview' ? 'block' : 'hidden'}`} />
