@@ -23,7 +23,8 @@
     "files": "Files",
     "git": "Source Control",
     "tasks": "Tasks",
-    "agents": "Agents"
+    "agents": "Agents",
+    "scheduler": "Scheduler"
   },
   "status": {
     "loading": "Loading...",

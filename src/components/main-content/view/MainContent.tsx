@@ -13,6 +13,7 @@ import EditorSidebar from '../../code-editor/view/EditorSidebar';
 import type { Project } from '../../../types/app';
 import { TaskMasterPanel } from '../../task-master';
 import OrchestrationPanel from '../../orchestration/OrchestrationPanel';
+import SchedulerPanel from '../../orchestration/SchedulerPanel';
 import MainContentHeader from './subcomponents/MainContentHeader';
 import MainContentStateView from './subcomponents/MainContentStateView';
 import ErrorBoundary from './ErrorBoundary';
@@ -92,10 +93,6 @@ function MainContent({
     return <MainContentStateView mode="loading" isMobile={isMobile} onMenuClick={onMenuClick} />;
   }
 
-  if (!selectedProject) {
-    return <MainContentStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />;
-  }
-
   return (
     <div className="flex h-full flex-col">
       <MainContentHeader
@@ -110,42 +107,50 @@ function MainContent({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className={`flex min-h-0 min-w-[200px] flex-col overflow-hidden ${editorExpanded ? 'hidden' : ''} flex-1`}>
-          <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
-            <ErrorBoundary showDetails>
-              <ChatInterface
-                selectedProject={selectedProject}
-                selectedSession={selectedSession}
-                ws={ws}
-                sendMessage={sendMessage}
-                latestMessage={latestMessage}
-                onFileOpen={handleFileOpen}
-                onInputFocusChange={onInputFocusChange}
-                onSessionActive={onSessionActive}
-                onSessionInactive={onSessionInactive}
-                onSessionProcessing={onSessionProcessing}
-                onSessionNotProcessing={onSessionNotProcessing}
-                processingSessions={processingSessions}
-                onReplaceTemporarySession={onReplaceTemporarySession}
-                onNavigateToSession={onNavigateToSession}
-                onShowSettings={onShowSettings}
-                autoExpandTools={autoExpandTools}
-                showRawParameters={showRawParameters}
-                showThinking={showThinking}
-                autoScrollToBottom={autoScrollToBottom}
-                sendByCtrlEnter={sendByCtrlEnter}
-                externalMessageUpdate={externalMessageUpdate}
-                onShowAllTasks={tasksEnabled ? () => setActiveTab('tasks') : null}
-              />
-            </ErrorBoundary>
-          </div>
 
-          {activeTab === 'files' && (
+          {/* Show empty state for project-dependent tabs when no project selected */}
+          {!selectedProject && (activeTab === 'chat' || activeTab === 'shell' || activeTab === 'files' || activeTab === 'git' || activeTab === 'tasks') && (
+            <MainContentStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />
+          )}
+
+          {selectedProject && (
+            <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+              <ErrorBoundary showDetails>
+                <ChatInterface
+                  selectedProject={selectedProject}
+                  selectedSession={selectedSession}
+                  ws={ws}
+                  sendMessage={sendMessage}
+                  latestMessage={latestMessage}
+                  onFileOpen={handleFileOpen}
+                  onInputFocusChange={onInputFocusChange}
+                  onSessionActive={onSessionActive}
+                  onSessionInactive={onSessionInactive}
+                  onSessionProcessing={onSessionProcessing}
+                  onSessionNotProcessing={onSessionNotProcessing}
+                  processingSessions={processingSessions}
+                  onReplaceTemporarySession={onReplaceTemporarySession}
+                  onNavigateToSession={onNavigateToSession}
+                  onShowSettings={onShowSettings}
+                  autoExpandTools={autoExpandTools}
+                  showRawParameters={showRawParameters}
+                  showThinking={showThinking}
+                  autoScrollToBottom={autoScrollToBottom}
+                  sendByCtrlEnter={sendByCtrlEnter}
+                  externalMessageUpdate={externalMessageUpdate}
+                  onShowAllTasks={tasksEnabled ? () => setActiveTab('tasks') : null}
+                />
+              </ErrorBoundary>
+            </div>
+          )}
+
+          {selectedProject && activeTab === 'files' && (
             <div className="h-full overflow-hidden">
               <FileTree selectedProject={selectedProject} onFileOpen={handleFileOpen} />
             </div>
           )}
 
-          {activeTab === 'shell' && (
+          {selectedProject && activeTab === 'shell' && (
             <div className="h-full w-full overflow-hidden">
               <StandaloneShell
                 project={selectedProject}
@@ -156,15 +161,17 @@ function MainContent({
             </div>
           )}
 
-          {activeTab === 'git' && (
+          {selectedProject && activeTab === 'git' && (
             <div className="h-full overflow-hidden">
               <GitPanel selectedProject={selectedProject} isMobile={isMobile} onFileOpen={handleFileOpen} />
             </div>
           )}
 
-          {shouldShowTasksTab && <TaskMasterPanel isVisible={activeTab === 'tasks'} />}
+          {selectedProject && shouldShowTasksTab && <TaskMasterPanel isVisible={activeTab === 'tasks'} />}
 
+          {/* Global tabs — always available regardless of project selection */}
           <OrchestrationPanel isVisible={activeTab === 'agents'} />
+          <SchedulerPanel isVisible={activeTab === 'scheduler'} />
 
           <div className={`h-full overflow-hidden ${activeTab === 'preview' ? 'block' : 'hidden'}`} />
 

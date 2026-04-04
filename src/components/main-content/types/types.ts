@@ -58,7 +58,7 @@ export type MainContentProps = {
 export type MainContentHeaderProps = {
   activeTab: AppTab;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
-  selectedProject: Project;
+  selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   shouldShowTasksTab: boolean;
   isMobile: boolean;
