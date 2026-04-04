@@ -47,22 +47,21 @@ export class ContainerManager extends EventEmitter {
       // Resource limits
       '--memory', memory,
       '--cpus', cpus,
-      // Mount project files
-      ...(projectPath ? ['-v', `${projectPath}:/workspace:rw`] : []),
-      // Mount Claude config directory (sessions, projects, cache)
-      '-v', `${home}/.claude:/home/node/.claude:rw`,
-      // Mount Claude config file (auth, API keys, settings)
-      '-v', `${home}/.claude.json:/home/node/.claude.json:rw`,
-      // Set HOME so claude CLI finds config at the right place
-      '--env', `HOME=/home/node`,
+      // Mount project files at the SAME path as the host so session paths match
+      ...(projectPath ? ['-v', `${projectPath}:${projectPath}:rw`] : []),
+      // Mount Claude config at the same host paths so sessions are filed correctly
+      '-v', `${home}/.claude:${home}/.claude:rw`,
+      '-v', `${home}/.claude.json:${home}/.claude.json:rw`,
+      // Set HOME to host HOME so claude CLI creates sessions under the same paths
+      '--env', `HOME=${home}`,
       // Network access to MCP broker on host
       '--add-host', 'host.docker.internal:host-gateway',
       '--env', `CONDUCTOR_MCP_URL=http://host.docker.internal:${this.mcpBrokerPort}/mcp`,
       '--env', `CONDUCTOR_AGENT_ID=${agentId}`,
       // Pass through API key if set
       ...(process.env.ANTHROPIC_API_KEY ? ['--env', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
-      // Working directory
-      '--workdir', '/workspace',
+      // Working directory — use real host path so CLI cwd matches
+      '--workdir', projectPath || '/workspace',
       image,
       'claude',
       ...claudeArgs,

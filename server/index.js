@@ -1585,21 +1585,16 @@ function handleChatConnection(ws, request) {
                 console.log('📁 Project:', data.options?.projectPath || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
 
-                // Determine container mode: default ON, opt-out with useContainer=false
-                const useContainer = data.options?.useContainer !== false;
-                console.log('🐳 Container:', useContainer ? 'YES (isolated)' : 'NO (host — ⚠️  WARNING)');
+                // Container mode: opt-in with useContainer=true
+                // Default uses SDK (reliable session management).
+                // Container mode available via /api/conductor/agents for orchestrated multi-agent tasks.
+                const useContainer = data.options?.useContainer === true;
 
                 if (useContainer) {
-                    // Containerized path via conductor ProcessManager + Docker
+                    console.log('🐳 Container: YES (isolated)');
                     await queryClaudeContainerized(data.command, data.options, writer, conductor);
                 } else {
-                    // Non-containerized fallback: warn then use SDK directly on host
-                    writer.send(createNormalizedMessage({
-                        kind: 'status',
-                        text: '⚠️  WARNING: Running without Docker container isolation. This agent has full access to your host filesystem and processes. Enable container mode for safe execution.',
-                        sessionId: data.options?.sessionId || '',
-                        provider: 'claude',
-                    }));
+                    // Standard SDK path — proven reliable with claudecodeui session management
                     await queryClaudeSDK(data.command, data.options, writer);
                 }
             } else if (data.type === 'cursor-command') {
