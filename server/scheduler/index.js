@@ -131,6 +131,7 @@ export class Scheduler extends EventEmitter {
 
     const job = cron.schedule(task.cron_expression, () => this._runTask(task.id), {
       scheduled: true,
+      timezone: process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
     })
     this.jobs.set(task.id, job)
     console.log(`[Scheduler] Scheduled "${task.name}" with cron: ${task.cron_expression}`)

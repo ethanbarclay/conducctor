@@ -90,7 +90,7 @@ const MCP_TOOLS = [
   },
   {
     name: 'schedule_task',
-    description: 'Create a recurring scheduled task that spawns an agent on a cron schedule. Common patterns: "*/5 * * * *" (every 5 min), "0 * * * *" (hourly), "0 9 * * *" (daily at 9am), "0 9 * * 1" (weekly Monday 9am).',
+    description: `Create a recurring scheduled task that spawns an agent on a cron schedule. Cron times are in the server's local timezone (${process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone}). Common patterns: "*/5 * * * *" (every 5 min), "0 * * * *" (hourly), "0 9 * * *" (daily at 9am), "0 9 * * 1" (weekly Monday 9am).`,
     inputSchema: {
       type: 'object',
       properties: {
