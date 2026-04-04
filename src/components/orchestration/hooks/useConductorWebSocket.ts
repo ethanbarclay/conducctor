@@ -298,6 +298,55 @@ export function useConductorWebSocket() {
         return;
       }
     }
+
+    // ── hook:event — CC hooks data (file changes, subagent lifecycle, etc.)
+    if (type === 'hook:event') {
+      const agentId = (data.agentId as string) || (data.sessionId as string);
+      const hookEvent = data.hookEvent as string;
+      const toolName = data.toolName as string | undefined;
+      const toolInput = data.toolInput as unknown;
+      const toolOutput = data.toolOutput as string | undefined;
+
+      if (!agentId) return;
+
+      let eventType: AgentEvent['type'] = 'status';
+      let content = hookEvent;
+
+      if (hookEvent === 'PreToolUse' && toolName) {
+        eventType = 'tool_use';
+        content = `${toolName}(${JSON.stringify(toolInput || {}).slice(0, 120)})`;
+      } else if (hookEvent === 'PostToolUse' && toolName) {
+        eventType = 'tool_result';
+        content = toolOutput || `${toolName} completed`;
+      } else if (hookEvent === 'SubagentStart') {
+        eventType = 'status';
+        content = `Subagent started: ${(data.message as string) || ''}`;
+      } else if (hookEvent === 'SubagentStop') {
+        eventType = 'status';
+        content = `Subagent stopped: ${(data.message as string) || ''}`;
+      } else if (hookEvent === 'SessionStart') {
+        eventType = 'status';
+        content = `Session started (${(data.source as string) || 'startup'})`;
+      } else if (hookEvent === 'Stop') {
+        eventType = 'status';
+        content = 'Session stopped';
+      }
+
+      const newEvent: AgentEvent = {
+        id: ++eventCounter,
+        type: eventType,
+        content,
+        timestamp: (data.timestamp as number) || Date.now(),
+      };
+
+      setState((prev) => ({
+        ...prev,
+        agentEvents: {
+          ...prev.agentEvents,
+          [agentId]: [...(prev.agentEvents[agentId] || []), newEvent].slice(-50),
+        },
+      }));
+    }
   }, []);
 
   useEffect(() => {

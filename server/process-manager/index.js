@@ -163,6 +163,12 @@ export class ProcessManager extends EventEmitter {
         args.push('--mcp-config', mcpConfigJson)
       }
 
+      // Hook settings for observability
+      const hookSettings = this._buildHookSettings(agent)
+      if (hookSettings) {
+        args.push('--settings', hookSettings)
+      }
+
       // Allowed/disallowed tools — always include conductor MCP tools
       const conductorTools = [
         'mcp__conductor__send_message',
@@ -229,6 +235,27 @@ export class ProcessManager extends EventEmitter {
         reject(err)
       })
     })
+  }
+
+  _buildHookSettings(agent) {
+    // The hook relay script is mounted at /opt/conductor/hook-relay.sh in Docker
+    // or available locally at the repo path
+    const relayPath = agent.useContainer
+      ? '/opt/conductor/hook-relay.sh'
+      : join(__dirname, '..', 'hook-relay.sh')
+
+    const hookCommand = relayPath
+    const hookEvents = ['PreToolUse', 'PostToolUse', 'SubagentStart', 'SubagentStop', 'SessionStart', 'Stop']
+
+    const hooks = {}
+    for (const event of hookEvents) {
+      hooks[event] = [{
+        matcher: '',
+        hooks: [hookCommand],
+      }]
+    }
+
+    return JSON.stringify({ hooks })
   }
 
   _buildMCPConfigArg(agentId) {

@@ -496,6 +496,22 @@ async function queryClaudeSDK(command, options = {}, ws) {
     tempImagePaths = imageResult.tempImagePaths;
     tempDir = imageResult.tempDir;
 
+    // Post hook events to the Conductor hooks receiver
+    const postHook = async (input) => {
+      try {
+        await fetch(`http://localhost:${process.env.SERVER_PORT || 3001}/api/conductor/hooks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...input,
+            agent_id: capturedSessionId || sessionId || null,
+            session_id: capturedSessionId || sessionId || null,
+          }),
+        });
+      } catch { /* non-blocking */ }
+      return {};
+    };
+
     sdkOptions.hooks = {
       Notification: [{
         matcher: '',
@@ -511,9 +527,16 @@ async function queryClaudeSDK(command, options = {}, ws) {
             requiresUserAction: true,
             dedupeKey: `claude:hook:notification:${capturedSessionId || sessionId || 'none'}:${message}`
           }));
+          await postHook(input);
           return {};
         }]
-      }]
+      }],
+      PreToolUse: [{ matcher: '', hooks: [postHook] }],
+      PostToolUse: [{ matcher: '', hooks: [postHook] }],
+      SubagentStart: [{ matcher: '', hooks: [postHook] }],
+      SubagentStop: [{ matcher: '', hooks: [postHook] }],
+      SessionStart: [{ matcher: '', hooks: [postHook] }],
+      Stop: [{ matcher: '', hooks: [postHook] }],
     };
 
     sdkOptions.canUseTool = async (toolName, input, context) => {

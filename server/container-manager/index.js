@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const BRIDGE_SCRIPT = join(__dirname, '..', 'mcp-stdio-bridge.js')
+const HOOK_RELAY = join(__dirname, '..', 'hook-relay.sh')
 
 const DEFAULT_IMAGE = 'conductor-agent:latest'
 const DEFAULT_MEMORY = '512m'
@@ -53,8 +54,9 @@ export class ContainerManager extends EventEmitter {
       '--cpus', cpus,
       // Mount project files at the SAME path as the host so session paths match
       ...(projectPath ? ['-v', `${projectPath}:${projectPath}:rw`] : []),
-      // Mount MCP stdio bridge script for inter-agent communication
+      // Mount MCP stdio bridge and hook relay for inter-agent communication
       '-v', `${BRIDGE_SCRIPT}:/opt/conductor/mcp-stdio-bridge.js:ro`,
+      '-v', `${HOOK_RELAY}:/opt/conductor/hook-relay.sh:ro`,
       // Mount Claude config at the same host paths so sessions are filed correctly
       '-v', `${home}/.claude:${home}/.claude:rw`,
       '-v', `${home}/.claude.json:${home}/.claude.json:rw`,
@@ -64,6 +66,7 @@ export class ContainerManager extends EventEmitter {
       '--add-host', 'host.docker.internal:host-gateway',
       '--env', `CONDUCTOR_MCP_URL=http://host.docker.internal:${this.mcpBrokerPort}/mcp`,
       '--env', `CONDUCTOR_AGENT_ID=${agentId}`,
+      '--env', `CONDUCTOR_HOOKS_URL=http://host.docker.internal:${process.env.SERVER_PORT || 3001}/api/conductor/hooks`,
       // Pass through API key if set
       ...(process.env.ANTHROPIC_API_KEY ? ['--env', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
       // Working directory — use real host path so CLI cwd matches

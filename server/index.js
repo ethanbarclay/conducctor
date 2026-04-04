@@ -82,6 +82,7 @@ import { MCPBroker } from './mcp-broker/index.js';
 import { ContextMonitor } from './context-monitor/index.js';
 import { Scheduler } from './scheduler/index.js';
 import conductorRoutes from './routes/conductor.js';
+import { createHooksReceiver } from './hooks-receiver.js';
 
 const VALID_PROVIDERS = ['claude', 'codex', 'cursor', 'gemini'];
 
@@ -455,6 +456,10 @@ app.use('/api/agent', agentRoutes);
 
 // Conductor orchestration API Routes (protected)
 app.use('/api/conductor', authenticateToken, conductorRoutes);
+
+// Hooks receiver (no auth — called from containers and SDK callbacks)
+const hooksRouter = createHooksReceiver({ db, broadcastFn: broadcastConductorEvent });
+app.use('/api/conductor/hooks', hooksRouter);
 
 // Serve public files (like api-docs.html)
 app.use(express.static(path.join(__dirname, '../public')));
