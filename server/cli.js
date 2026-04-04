@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Claude Code UI CLI
+ * Conducctor CLI
  *
- * Provides command-line utilities for managing Claude Code UI
+ * Provides command-line utilities for managing Conducctor
  *
  * Commands:
  *   (no args)     - Start the server (default)
