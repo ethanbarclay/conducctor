@@ -18,6 +18,7 @@ interface SpawnDialogState {
   role: string;
   projectPath: string;
   useContainer: boolean;
+  spawning: boolean;
 }
 
 async function conductorFetch(path: string, token: string, options: RequestInit = {}) {
@@ -34,7 +35,7 @@ async function conductorFetch(path: string, token: string, options: RequestInit 
 
 export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }) {
   const { token } = useAuth();
-  const { agents, messages, isConnected } = useConductorWebSocket();
+  const { agents, messages, agentEvents, isConnected } = useConductorWebSocket();
 
   const [spawnDialog, setSpawnDialog] = useState<SpawnDialogState>({
     open: false,
@@ -42,7 +43,10 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
     role: 'agent',
     projectPath: '',
     useContainer: true,
+    spawning: false,
   });
+
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
 
   const agentRoles = agents.reduce<Record<string, string>>((acc, a) => {
     acc[a.agentId] = a.role;
@@ -95,18 +99,39 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
   }, []);
 
   const handleSpawnSubmit = useCallback(async () => {
-    if (!spawnDialog.prompt.trim()) return;
-    await conductorFetch('/agents', token, {
-      method: 'POST',
-      body: JSON.stringify({
-        prompt: spawnDialog.prompt,
-        projectPath: spawnDialog.projectPath || undefined,
-        role: spawnDialog.role,
-        useContainer: spawnDialog.useContainer,
-      }),
-    });
-    setSpawnDialog({ open: false, prompt: '', role: 'agent', projectPath: '', useContainer: true });
+    if (!spawnDialog.prompt.trim() || spawnDialog.spawning) return;
+    setSpawnDialog((prev) => ({ ...prev, spawning: true }));
+    try {
+      await conductorFetch('/agents', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: spawnDialog.prompt,
+          projectPath: spawnDialog.projectPath || undefined,
+          role: spawnDialog.role,
+          useContainer: spawnDialog.useContainer,
+        }),
+      });
+      setSpawnDialog({
+        open: false,
+        prompt: '',
+        role: 'agent',
+        projectPath: '',
+        useContainer: true,
+        spawning: false,
+      });
+    } catch {
+      setSpawnDialog((prev) => ({ ...prev, spawning: false }));
+    }
   }, [spawnDialog, token]);
+
+  const toggleAgentExpanded = useCallback((agentId: string) => {
+    setExpandedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentId)) next.delete(agentId);
+      else next.add(agentId);
+      return next;
+    });
+  }, []);
 
   return (
     <div className={`h-full flex flex-col overflow-hidden ${isVisible ? 'block' : 'hidden'}`}>
@@ -129,8 +154,9 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Spawn New Agent</span>
             <button
-              onClick={() => setSpawnDialog((prev) => ({ ...prev, open: false }))}
+              onClick={() => setSpawnDialog((prev) => ({ ...prev, open: false, spawning: false }))}
               className="text-xs text-muted-foreground hover:text-foreground"
+              disabled={spawnDialog.spawning}
             >
               Cancel
             </button>
@@ -144,6 +170,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               placeholder="Initial prompt..."
               className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
               autoFocus
+              disabled={spawnDialog.spawning}
             />
             <input
               type="text"
@@ -151,6 +178,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, role: e.target.value }))}
               placeholder="Role (e.g. researcher, coder)"
               className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
+              disabled={spawnDialog.spawning}
             />
             <input
               type="text"
@@ -158,6 +186,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, projectPath: e.target.value }))}
               placeholder="Project path (optional)"
               className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
+              disabled={spawnDialog.spawning}
             />
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -168,24 +197,32 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
                     setSpawnDialog((prev) => ({ ...prev, useContainer: e.target.checked }))
                   }
                   className="h-3.5 w-3.5 rounded border-gray-300"
+                  disabled={spawnDialog.spawning}
                 />
                 Container isolation
               </label>
               <button
                 onClick={handleSpawnSubmit}
-                className="ml-auto text-xs px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                disabled={spawnDialog.spawning || !spawnDialog.prompt.trim()}
+                className="ml-auto text-xs px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Spawn
+                {spawnDialog.spawning && (
+                  <div className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-primary-foreground/40 border-t-primary-foreground" />
+                )}
+                {spawnDialog.spawning ? 'Spawning...' : 'Spawn'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Agent grid */}
+      {/* Agent grid with activity */}
       <div className="flex-1 overflow-y-auto">
         <AgentGrid
           agents={agents}
+          agentEvents={agentEvents}
+          expandedAgents={expandedAgents}
+          onToggleExpanded={toggleAgentExpanded}
           onCompact={handleCompact}
           onFork={handleFork}
           onCheckpoint={handleCheckpoint}

@@ -1,10 +1,11 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { Folder, MessageSquare, Search } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import { ScrollArea } from '../../../../shared/view/ui';
-import type { Project } from '../../../../types/app';
+import type { Project, ProjectSession } from '../../../../types/app';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import type { ConversationSearchResults, SearchProgress } from '../../hooks/useSidebarController';
+import { getAllSessions, getSessionDate, getSessionName } from '../../utils/utils';
 import SidebarFooter from './SidebarFooter';
 import SidebarHeader from './SidebarHeader';
 import SidebarProjectList, { type SidebarProjectListProps } from './SidebarProjectList';
@@ -89,7 +90,26 @@ export default function SidebarContent({
   t,
 }: SidebarContentProps) {
   const showConversationSearch = searchMode === 'conversations' && searchFilter.trim().length >= 2;
+  const showFlatConversations = searchMode === 'conversations' && searchFilter.trim().length < 2;
   const hasPartialResults = conversationResults && conversationResults.results.length > 0;
+
+  // Flat recency-sorted sessions across all projects
+  const flatSessions = useMemo(() => {
+    if (!showFlatConversations) return [];
+    const all: Array<{ session: ProjectSession & { __provider?: string }; projectName: string; projectDisplayName: string }> = [];
+    for (const project of projects) {
+      const sessions = getAllSessions(project, {});
+      for (const session of sessions) {
+        all.push({
+          session,
+          projectName: project.name,
+          projectDisplayName: project.displayName || project.name,
+        });
+      }
+    }
+    all.sort((a, b) => getSessionDate(b.session).getTime() - getSessionDate(a.session).getTime());
+    return all.slice(0, 50);
+  }, [showFlatConversations, projects]);
 
   return (
     <div
@@ -114,7 +134,63 @@ export default function SidebarContent({
       />
 
       <ScrollArea className="flex-1 overflow-y-auto overscroll-contain md:px-1.5 md:py-2">
-        {showConversationSearch ? (
+        {showFlatConversations ? (
+          flatSessions.length === 0 ? (
+            <div className="px-4 py-12 text-center md:py-8">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-muted md:mb-3">
+                <MessageSquare className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <h3 className="mb-2 text-base font-medium text-foreground md:mb-1">No conversations yet</h3>
+              <p className="text-sm text-muted-foreground">Start a chat session to see it here</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5 px-1">
+              {flatSessions.map(({ session, projectName, projectDisplayName }) => {
+                const sessionDate = getSessionDate(session);
+                const now = new Date();
+                const diffMin = Math.floor((now.getTime() - sessionDate.getTime()) / 60000);
+                const timeLabel = diffMin < 1 ? 'now'
+                  : diffMin < 60 ? `${diffMin}m ago`
+                  : diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago`
+                  : `${Math.floor(diffMin / 1440)}d ago`;
+                const isActive = diffMin < 10;
+
+                return (
+                  <button
+                    key={`${projectName}-${session.id}`}
+                    className="w-full rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
+                    onClick={() => onConversationResultClick(
+                      projectName,
+                      session.id,
+                      session.__provider || 'claude',
+                      null,
+                      null,
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {isActive && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                        {getSessionName(session, t)}
+                      </span>
+                      {session.__provider && session.__provider !== 'claude' && (
+                        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase text-muted-foreground">
+                          {session.__provider}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{timeLabel}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1 pl-0">
+                      <Folder className="h-2.5 w-2.5 shrink-0 text-muted-foreground/50" />
+                      <span className="truncate text-[10px] text-muted-foreground/70">{projectDisplayName}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )
+        ) : showConversationSearch ? (
           isSearching && !hasPartialResults ? (
             <div className="px-4 py-12 text-center md:py-8">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-muted md:mb-3">

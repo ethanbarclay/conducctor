@@ -27,9 +27,17 @@ interface AgentMessage {
   created_at: number;
 }
 
+export interface AgentEvent {
+  id: number;
+  type: 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'error' | 'status';
+  content: string;
+  timestamp: number;
+}
+
 interface ConductorState {
   agents: Agent[];
   messages: AgentMessage[];
+  agentEvents: Record<string, AgentEvent[]>; // agentId → recent events
   isConnected: boolean;
 }
 
@@ -58,8 +66,11 @@ export function useConductorWebSocket() {
   const [state, setState] = useState<ConductorState>({
     agents: [],
     messages: [],
+    agentEvents: {},
     isConnected: false,
   });
+
+  let eventCounter = 0;
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -200,9 +211,92 @@ export function useConductorWebSocket() {
       };
       setState((prev) => ({
         ...prev,
-        messages: [...prev.messages, msg].slice(-200), // keep last 200
+        messages: [...prev.messages, msg].slice(-200),
       }));
       return;
+    }
+
+    // ── agent:event — capture thinking, text, tool_use from stream ────
+    if (type === 'agent:event') {
+      const agentId = data.agentId as string;
+      const event = data.event as Record<string, unknown>;
+      if (!agentId || !event) return;
+
+      const newEvents: AgentEvent[] = [];
+
+      // Update agent status based on event type
+      if (event.type === 'assistant' && event.message) {
+        const msg = event.message as { content?: Array<Record<string, unknown>> };
+        if (msg.content) {
+          for (const block of msg.content) {
+            if (block.type === 'thinking' && block.thinking) {
+              newEvents.push({
+                id: ++eventCounter,
+                type: 'thinking',
+                content: (block.thinking as string).slice(0, 200),
+                timestamp: Date.now(),
+              });
+            } else if (block.type === 'text' && block.text) {
+              newEvents.push({
+                id: ++eventCounter,
+                type: 'text',
+                content: block.text as string,
+                timestamp: Date.now(),
+              });
+            } else if (block.type === 'tool_use') {
+              newEvents.push({
+                id: ++eventCounter,
+                type: 'tool_use',
+                content: `${block.name as string}(${JSON.stringify(block.input || {}).slice(0, 100)})`,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+
+        // Update agent to 'thinking' or 'running' while active
+        setState((prev) => ({
+          ...prev,
+          agents: prev.agents.map((a) =>
+            a.agentId === agentId ? { ...a, status: 'running' as const } : a,
+          ),
+          agentEvents: {
+            ...prev.agentEvents,
+            [agentId]: [...(prev.agentEvents[agentId] || []), ...newEvents].slice(-50),
+          },
+        }));
+        return;
+      }
+
+      if (event.type === 'user' && event.message) {
+        const msg = event.message as { content?: Array<Record<string, unknown>> };
+        if (msg.content) {
+          for (const block of msg.content) {
+            if (block.type === 'tool_result') {
+              const content = typeof block.content === 'string'
+                ? (block.content as string).slice(0, 150)
+                : JSON.stringify(block.content || '').slice(0, 150);
+              newEvents.push({
+                id: ++eventCounter,
+                type: 'tool_result',
+                content,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+
+        if (newEvents.length > 0) {
+          setState((prev) => ({
+            ...prev,
+            agentEvents: {
+              ...prev.agentEvents,
+              [agentId]: [...(prev.agentEvents[agentId] || []), ...newEvents].slice(-50),
+            },
+          }));
+        }
+        return;
+      }
     }
   }, []);
 
