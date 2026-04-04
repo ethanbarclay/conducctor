@@ -1,0 +1,12 @@
+FROM node:22-slim
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create workspace directory
+RUN mkdir -p /workspace
+
+WORKDIR /workspace
+
+# Default entrypoint is the claude CLI
+ENTRYPOINT ["claude"]
