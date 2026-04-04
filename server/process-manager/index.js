@@ -38,6 +38,7 @@ export class ProcessManager extends EventEmitter {
       sessionId: opts.sessionId || null,
       projectId: opts.projectId,
       role: opts.role || 'agent',
+      model: opts.model || null,
       useContainer: !!opts.useContainer,
       permissionMode: opts.permissionMode || null,
       skipPermissions: !!opts.skipPermissions,
@@ -126,6 +127,11 @@ export class ProcessManager extends EventEmitter {
       agent.busy = true
 
       const args = ['--output-format', 'stream-json', '--verbose']
+
+      // Model
+      if (agent.model) {
+        args.push('--model', agent.model)
+      }
 
       // Permission mode
       if (agent.permissionMode) {
