@@ -388,7 +388,8 @@ export function useProjectsState({
     (session: ProjectSession) => {
       setSelectedSession(session);
 
-      if (activeTab === 'tasks' || activeTab === 'preview') {
+      // Switch to chat when selecting a conversation, unless in shell
+      if (activeTab !== 'chat' && activeTab !== 'shell') {
         setActiveTab('chat');
       }
 
