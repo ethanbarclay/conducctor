@@ -1,11 +1,11 @@
 {
-  "name": "@cloudcli-ai/cloudcli",
-  "version": "1.28.0",
-  "description": "A web-based UI for Claude Code CLI",
+  "name": "conductor",
+  "version": "0.1.0",
+  "description": "Multi-agent Claude Code orchestration platform with real-time observability",
   "type": "module",
   "main": "server/index.js",
   "bin": {
-    "cloudcli": "server/cli.js"
+    "conductor": "server/cli.js"
   },
   "files": [
     "server/",
@@ -14,13 +14,13 @@
     "scripts/",
     "README.md"
   ],
-  "homepage": "https://cloudcli.ai",
+  "homepage": "https://github.com/ethanbarclay/nanoclaw",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/siteboon/claudecodeui.git"
+    "url": "git+https://github.com/ethanbarclay/nanoclaw.git"
   },
   "bugs": {
-    "url": "https://github.com/siteboon/claudecodeui/issues"
+    "url": "https://github.com/ethanbarclay/nanoclaw/issues"
   },
   "scripts": {
     "dev": "concurrently --kill-others \"npm run server\" \"npm run client\"",
