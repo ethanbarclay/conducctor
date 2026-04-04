@@ -1,6 +1,6 @@
 {
   "name": "conducctor",
-  "version": "1.28.0-conducctor.1",
+  "version": "0.1.0",
   "description": "Multi-agent Claude Code orchestration platform with real-time observability",
   "type": "module",
   "main": "server/index.js",
