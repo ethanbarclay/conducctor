@@ -40,7 +40,7 @@ function Sidebar({
   const { isPWA } = useDeviceSettings({ trackMobile: false });
   const { updateAvailable, latestVersion, currentVersion, releaseInfo, installMode } = useVersionCheck(
     'ethanbarclay',
-    'nanoclaw',
+    'conducctor',
   );
   const { preferences, setPreference } = useUiPreferences();
   const { sidebarVisible } = preferences;

@@ -94,4 +94,4 @@ The conductor modules are scaffolded but not yet fully integrated into the main 
 
 ## Deployment
 
-Currently deployed on `ethan@10.1.1.4` (Debian Linux) at `~/nanoclaw`, running on port 3001. SSH key at `~/.ssh/id_nanoclaw_deploy`.
+Currently deployed on `ethan@10.1.1.4` (Debian Linux) at `~/conducctor`, running on port 3001. SSH key at `~/.ssh/id_conducctor_deploy`.

@@ -14,13 +14,13 @@
     "scripts/",
     "README.md"
   ],
-  "homepage": "https://github.com/ethanbarclay/nanoclaw",
+  "homepage": "https://github.com/ethanbarclay/conducctor",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ethanbarclay/nanoclaw.git"
+    "url": "git+https://github.com/ethanbarclay/conducctor.git"
   },
   "bugs": {
-    "url": "https://github.com/ethanbarclay/nanoclaw/issues"
+    "url": "https://github.com/ethanbarclay/conducctor/issues"
   },
   "scripts": {
     "dev": "concurrently --kill-others \"npm run server\" \"npm run client\"",
