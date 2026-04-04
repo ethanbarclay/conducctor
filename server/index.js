@@ -1681,9 +1681,9 @@ function handleChatConnection(ws, request) {
                 } else if (provider === 'gemini') {
                     isActive = isGeminiSessionActive(sessionId);
                 } else {
-                    // Check conductor agents first, then SDK
-                    const conductorActive = conductor.processManager.list().some(a => a.agentId === sessionId || a.sessionId === sessionId);
-                    isActive = conductorActive || isClaudeSDKSessionActive(sessionId);
+                    // Check conductor agents (only if busy), then SDK
+                    const conductorBusy = conductor.processManager.list().some(a => (a.agentId === sessionId || a.sessionId === sessionId) && a.busy);
+                    isActive = conductorBusy || isClaudeSDKSessionActive(sessionId);
                     if (isActive) {
                         // Reconnect the session's writer to the new WebSocket so
                         // subsequent SDK output flows to the refreshed client.
