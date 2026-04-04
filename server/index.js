@@ -49,7 +49,7 @@ import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getAct
 import { spawnCursor, abortCursorSession, isCursorSessionActive, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getActiveCodexSessions } from './openai-codex.js';
 import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getActiveGeminiSessions } from './gemini-cli.js';
-import { queryClaudeContainerized, sendContainerizedInput, abortContainerizedSession } from './conductor-bridge.js';
+import { queryClaudeContainerized, abortContainerizedSession } from './conductor-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
