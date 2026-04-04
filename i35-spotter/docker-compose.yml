@@ -1,0 +1,90 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# I-35 Spotter — Full Stack
+#
+# Production:  VIDEO_SOURCE=rtsp://PI_IP:8554/cam
+# Test mode:   VIDEO_SOURCE=/data/test/video.mov  (mount the file below)
+#              LOOP_VIDEO=true
+#              Or leave VIDEO_SOURCE blank and start via Admin Panel → ⚙️ Admin
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       i35spotter
+      POSTGRES_USER:     spotter
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./db/seed_specs.py:/seed_specs.py   # manual: docker exec db python /seed_specs.py
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spotter -d i35spotter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Detector (YOLO + CLIP + Claude) ───────────────────────────────────────
+  detector:
+    build: ./detector
+    restart: unless-stopped
+    runtime: nvidia           # RTX 4070 Super
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      # Leave VIDEO_SOURCE blank to wait for Admin Panel start command,
+      # or set it here to auto-start:
+      VIDEO_SOURCE:     ${VIDEO_SOURCE:-}
+      LOOP_VIDEO:       ${LOOP_VIDEO:-false}
+      DB_URL:           postgresql://spotter:${DB_PASSWORD}@db:5432/i35spotter
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CROPS_PATH:       /data/crops
+      MIN_SCORE_TO_SAVE_CROP: ${MIN_SCORE_TO_SAVE_CROP:-6}
+    volumes:
+      - crops_data:/data/crops
+      # Mount a local folder for test videos:
+      - ${TEST_VIDEO_DIR:-/dev/null}:/data/test:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  api:
+    build: ./api
+    restart: unless-stopped
+    environment:
+      DB_URL:     postgresql://spotter:${DB_PASSWORD}@db:5432/i35spotter
+      CROPS_PATH: /data/crops
+    volumes:
+      - crops_data:/data/crops
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── React Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    network_mode: host   # binds directly to host NIC — LAN accessible on port 3000
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  crops_data:
