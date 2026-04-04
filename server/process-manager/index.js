@@ -33,6 +33,10 @@ export class ProcessManager extends EventEmitter {
       projectId: opts.projectId,
       role: opts.role || 'agent',
       useContainer: !!opts.useContainer,
+      permissionMode: opts.permissionMode || null,
+      skipPermissions: !!opts.skipPermissions,
+      allowedTools: opts.allowedTools || [],
+      disallowedTools: opts.disallowedTools || [],
       startedAt: Date.now(),
       tokenUsage: { input: 0, output: 0 },
       busy: false,
@@ -116,6 +120,23 @@ export class ProcessManager extends EventEmitter {
       agent.busy = true
 
       const args = ['--output-format', 'stream-json', '--verbose']
+
+      // Permission mode
+      if (agent.permissionMode) {
+        args.push('--permission-mode', agent.permissionMode)
+      }
+      if (agent.skipPermissions) {
+        args.push('--dangerously-skip-permissions')
+      }
+
+      // Allowed/disallowed tools
+      if (agent.allowedTools?.length) {
+        args.push('--allowedTools', ...agent.allowedTools)
+      }
+      if (agent.disallowedTools?.length) {
+        args.push('--disallowedTools', ...agent.disallowedTools)
+      }
+
       if (sessionId) {
         args.push('--resume', sessionId, '-p', message)
       } else {

@@ -29,6 +29,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     sessionId,
     useContainer = true,
     role = 'agent',
+    permissionMode,
+    toolsSettings,
   } = options;
 
   const workingDir = projectPath || cwd;
@@ -215,6 +217,10 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       useContainer,
       role,
       agentId, // pass pre-generated ID
+      permissionMode,
+      allowedTools: toolsSettings?.allowedTools,
+      disallowedTools: toolsSettings?.disallowedTools,
+      skipPermissions: toolsSettings?.skipPermissions,
     });
   } catch (err) {
     cleanup();
