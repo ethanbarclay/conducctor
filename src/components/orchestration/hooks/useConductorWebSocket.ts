@@ -32,6 +32,9 @@ export interface AgentEvent {
   type: 'thinking' | 'text' | 'tool_use' | 'tool_result' | 'error' | 'status';
   content: string;
   timestamp: number;
+  parentToolUseId?: string | null;
+  toolName?: string;
+  depth?: number;
 }
 
 interface ConductorState {
@@ -223,6 +226,9 @@ export function useConductorWebSocket() {
       if (!agentId || !event) return;
 
       const newEvents: AgentEvent[] = [];
+      const parentToolUseId = (event.parent_tool_use_id as string) || null;
+      // Estimate depth: events with parent_tool_use_id are from subagents
+      const depth = parentToolUseId ? 1 : 0;
 
       // Update agent status based on event type
       if (event.type === 'assistant' && event.message) {
@@ -235,6 +241,8 @@ export function useConductorWebSocket() {
                 type: 'thinking',
                 content: (block.thinking as string).slice(0, 200),
                 timestamp: Date.now(),
+                parentToolUseId,
+                depth,
               });
             } else if (block.type === 'text' && block.text) {
               newEvents.push({
@@ -242,6 +250,8 @@ export function useConductorWebSocket() {
                 type: 'text',
                 content: block.text as string,
                 timestamp: Date.now(),
+                parentToolUseId,
+                depth,
               });
             } else if (block.type === 'tool_use') {
               newEvents.push({
@@ -249,6 +259,9 @@ export function useConductorWebSocket() {
                 type: 'tool_use',
                 content: `${block.name as string}(${JSON.stringify(block.input || {}).slice(0, 100)})`,
                 timestamp: Date.now(),
+                parentToolUseId,
+                toolName: block.name as string,
+                depth,
               });
             }
           }

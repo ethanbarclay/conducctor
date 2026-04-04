@@ -93,12 +93,15 @@ function AgentActivity({ events }: { events: AgentEvent[] }) {
 
   return (
     <div className="max-h-48 space-y-0.5 overflow-y-auto">
-      {[...events].reverse().map((evt) => (
+      {[...events].reverse().map((evt) => {
+        const depth = evt.depth || 0;
+        return (
         <div
           key={evt.id}
-          className="flex items-start gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-accent/30"
+          className={`flex items-start gap-1.5 rounded py-1 text-[10px] hover:bg-accent/30 ${depth > 0 ? 'bg-muted/20 opacity-80' : ''}`}
+          style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: '8px' }}
         >
-          <span className="shrink-0 pt-0.5">{EVENT_ICONS[evt.type]}</span>
+          <span className="shrink-0 pt-0.5">{depth > 0 ? '↳' : EVENT_ICONS[evt.type]}</span>
           <span className="min-w-0 flex-1 break-words text-muted-foreground">
             {evt.content}
           </span>
@@ -110,7 +113,8 @@ function AgentActivity({ events }: { events: AgentEvent[] }) {
             })}
           </span>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

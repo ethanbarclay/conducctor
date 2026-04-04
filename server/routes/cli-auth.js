@@ -147,7 +147,7 @@ async function checkClaudeCredentials() {
 
   // Priority 1b: Check ~/.claude/settings.json env values.
   // Claude Code can read proxy/auth values from settings.json even when the
-  // CloudCLI server process itself was not started with those env vars exported.
+  // Conducctor server process itself was not started with those env vars exported.
   const settingsEnv = await loadClaudeSettingsEnv();
 
   if (typeof settingsEnv.ANTHROPIC_API_KEY === 'string' && settingsEnv.ANTHROPIC_API_KEY.trim()) {

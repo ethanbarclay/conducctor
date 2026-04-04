@@ -202,19 +202,28 @@ export default function ObservabilityPanel({ isVisible }: { isVisible: boolean }
           <div className="divide-y divide-border/20">
             {filteredEvents.map((event) => {
               const color = agentColors.get(event.agentId) || 'text-muted-foreground';
+              const depth = event.depth || 0;
+              const indent = depth * 20;
+              const isSubagent = depth > 0;
               return (
                 <div
                   key={`${event.agentId}-${event.id}`}
-                  className={`flex items-start gap-2 border-l-2 px-4 py-1.5 transition-colors hover:bg-accent/20 ${EVENT_COLORS[event.type] || 'border-l-transparent'}`}
+                  className={`flex items-start gap-2 border-l-2 py-1.5 transition-colors hover:bg-accent/20 ${EVENT_COLORS[event.type] || 'border-l-transparent'} ${isSubagent ? 'bg-muted/20' : ''}`}
+                  style={{ paddingLeft: `${16 + indent}px`, paddingRight: '16px' }}
                 >
+                  {/* Subagent tree connector */}
+                  {isSubagent && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground/40">↳</span>
+                  )}
+
                   {/* Timestamp */}
                   <span className="shrink-0 pt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground/60">
                     {formatTime(event.timestamp)}
                   </span>
 
                   {/* Agent label */}
-                  <span className={`shrink-0 w-20 truncate text-[10px] font-medium ${color}`}>
-                    {event.role}
+                  <span className={`shrink-0 w-20 truncate text-[10px] font-medium ${color} ${isSubagent ? 'opacity-70' : ''}`}>
+                    {isSubagent ? '↳ ' : ''}{event.role}
                   </span>
 
                   {/* Event type badge */}

@@ -25,5 +25,5 @@ try {
 }
 
 if (!process.env.DATABASE_PATH) {
-  process.env.DATABASE_PATH = path.join(os.homedir(), '.cloudcli', 'auth.db');
+  process.env.DATABASE_PATH = path.join(os.homedir(), '.conducctor', 'auth.db');
 }

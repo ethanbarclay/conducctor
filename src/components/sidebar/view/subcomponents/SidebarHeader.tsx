@@ -60,7 +60,7 @@ export default function SidebarHeader({
         <div className="flex items-center justify-between gap-2">
           {IS_PLATFORM ? (
             <a
-              href="https://cloudcli.ai/dashboard"
+              href="https://conducctor.ai/dashboard"
               className="flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-80"
               title={t('tooltips.viewEnvironments')}
             >
@@ -172,7 +172,7 @@ export default function SidebarHeader({
         <div className="flex items-center justify-between">
           {IS_PLATFORM ? (
             <a
-              href="https://cloudcli.ai/dashboard"
+              href="https://conducctor.ai/dashboard"
               className="flex min-w-0 items-center gap-2.5 transition-opacity active:opacity-70"
               title={t('tooltips.viewEnvironments')}
             >
