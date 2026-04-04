@@ -61,12 +61,28 @@ export class ProcessManager extends EventEmitter {
 
   /**
    * Send a follow-up message to an agent. Spawns a new --resume process.
+   * If the agent is busy, queues the message for when the current turn completes.
    */
   async sendInput(agentId, message) {
     const agent = this.agents.get(agentId)
     if (!agent) throw new Error(`Agent ${agentId} not found`)
     if (!agent.sessionId) throw new Error(`Agent ${agentId} has no session to resume`)
+
+    if (agent.busy) {
+      // Queue the message for after the current turn
+      if (!agent.pendingMessages) agent.pendingMessages = []
+      agent.pendingMessages.push(message)
+      console.log(`[ProcessManager] Agent ${agentId.slice(0, 8)} busy, queued message (${agent.pendingMessages.length} pending)`)
+      return
+    }
+
     await this._runTurn(agentId, message, agent.sessionId)
+
+    // Process any queued messages
+    while (agent.pendingMessages?.length > 0) {
+      const next = agent.pendingMessages.shift()
+      await this._runTurn(agentId, next, agent.sessionId)
+    }
   }
 
   /**

@@ -253,29 +253,75 @@ export class MCPBroker extends EventEmitter {
       case 'spawn_agent': {
         const callerAgent = this.processManager.agents?.get(fromAgentId)
         const newAgentId = randomUUID()
+        const role = args.role || 'sub-agent'
+
+        // Augment the sub-agent prompt with coordination instructions
+        const augmentedPrompt = [
+          args.prompt,
+          '',
+          '---',
+          'IMPORTANT: You are a sub-agent spawned by another agent.',
+          `Your spawner's agent ID is: ${fromAgentId}`,
+          'When you have completed your task, you MUST use the send_message tool to report your findings back:',
+          `  send_message(to: "${fromAgentId}", content: "<your full results here>")`,
+          'Do NOT skip this step. Your spawner is waiting for your results.',
+          'Complete your task thoroughly, then send the results back.',
+        ].join('\n')
 
         // Spawn asynchronously — don't block the caller
         this.processManager.spawn({
           agentId: newAgentId,
-          prompt: args.prompt,
+          prompt: augmentedPrompt,
           projectId: args.project_path || callerAgent?.projectId,
-          role: args.role || 'sub-agent',
+          role,
           useContainer: callerAgent?.useContainer ?? false,
+          permissionMode: callerAgent?.permissionMode || 'bypassPermissions',
+          model: callerAgent?.model || null,
+        }).then(() => {
+          // Sub-agent turn completed — notify the spawner
+          console.log(`[MCP Broker] Sub-agent ${newAgentId} (${role}) completed, notifying spawner ${fromAgentId}`)
+
+          // Insert a system message to the spawner
+          this.db.prepare(
+            'INSERT INTO agent_messages (from_agent, to_agent, content) VALUES (?, ?, ?)'
+          ).run(newAgentId, fromAgentId, `[COMPLETED] Sub-agent "${role}" (${newAgentId.slice(0, 8)}) has finished its task. Use read_messages() to see the results.`)
+
+          this.emit('message:sent', {
+            from: newAgentId,
+            to: fromAgentId,
+            content: `Sub-agent "${role}" completed`,
+          })
+
+          // Auto-trigger a follow-up turn on the spawner to read results
+          const spawner = this.processManager.agents?.get(fromAgentId)
+          if (spawner && spawner.sessionId && !spawner.busy) {
+            console.log(`[MCP Broker] Auto-triggering spawner ${fromAgentId} to read results`)
+            this.processManager.sendInput(
+              fromAgentId,
+              `Your sub-agent "${role}" has completed its task. Use read_messages() to retrieve the results and continue your work.`
+            ).catch(err => {
+              console.error(`[MCP Broker] Failed to auto-trigger spawner:`, err.message)
+            })
+          }
         }).catch(err => {
           console.error(`[MCP Broker] spawn_agent failed:`, err.message)
+          // Notify spawner of failure
+          this.db.prepare(
+            'INSERT INTO agent_messages (from_agent, to_agent, content) VALUES (?, ?, ?)'
+          ).run('system', fromAgentId, `[ERROR] Sub-agent "${role}" failed: ${err.message}`)
         })
 
         this.emit('agent:spawned-by-agent', {
           spawner: fromAgentId,
           newAgentId,
-          role: args.role || 'sub-agent',
+          role,
           prompt: args.prompt,
         })
 
         return {
           content: [{
             type: 'text',
-            text: `Agent ${newAgentId} spawned with role "${args.role || 'sub-agent'}". Use send_message("${newAgentId}", "your message") to communicate with it, or read_messages() to check for replies.`,
+            text: `Agent ${newAgentId.slice(0, 8)} spawned with role "${role}". It will automatically report results back to you when done. Use read_messages() to check for replies.`,
           }],
         }
       }
