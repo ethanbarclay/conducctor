@@ -169,7 +169,7 @@ export class ProcessManager extends EventEmitter {
         args.push('--settings', hookSettings)
       }
 
-      // Allowed/disallowed tools — always include conductor MCP tools
+      // Allowed tools: conductor MCP + common CC tools that need explicit allow
       const conductorTools = [
         'mcp__conductor__send_message',
         'mcp__conductor__read_messages',
@@ -183,6 +183,10 @@ export class ProcessManager extends EventEmitter {
         'mcp__conductor__update_scheduled_task',
         'mcp__conductor__run_scheduled_task',
         'mcp__conductor__delete_scheduled_task',
+        // Standard CC tools that frequently need permission
+        'WebSearch', 'WebFetch',
+        'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
+        'NotebookEdit', 'TodoWrite',
       ]
       const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
       args.push('--allowedTools', ...allAllowed)
