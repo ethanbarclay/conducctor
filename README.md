@@ -60,6 +60,94 @@ Every agent gets access to:
 | `run_scheduled_task` | Trigger a task now |
 | `delete_scheduled_task` | Remove a task |
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Browser["Browser (Desktop / Mobile)"]
+        UI[Conducctor UI]
+        subgraph Tabs["Tab Bar"]
+            Chat[Chat]
+            Shell[Shell]
+            Files[Files]
+            Git[Source Control]
+            Agents[Agents]
+            Observe[Observe]
+            Scheduler[Scheduler]
+        end
+    end
+
+    UI <-->|"WebSocket /ws"| Server
+    UI <-->|"WebSocket /conductor-ws"| Server
+    UI -->|"REST /api/conductor/*"| Server
+
+    subgraph Server["Conducctor Server · Node.js + Express"]
+        PM[Process Manager]
+        CM[Container Manager]
+        CM2[Context Monitor]
+        MCPBroker["MCP Broker :3101"]
+        Sched["Scheduler · node-cron"]
+        Hooks[Hooks Receiver]
+        Bridge["Conductor Bridge · stream-json → UI"]
+        DB[("SQLite · agents, messages, checkpoints, tasks")]
+    end
+
+    PM --> CM
+    PM --> CM2
+    PM <--> MCPBroker
+    Sched --> PM
+    Hooks --> DB
+    CM2 --> DB
+    MCPBroker --> DB
+
+    subgraph Docker["Docker Containers"]
+        subgraph Agent1["Agent Container"]
+            CC1["claude CLI · stream-json + mcp-config"]
+            StdioBridge1[MCP Stdio Bridge]
+            HookRelay1[Hook Relay Script]
+            CC1 <-->|"stdio JSON-RPC"| StdioBridge1
+            CC1 -->|"hook stdin/stdout"| HookRelay1
+
+            subgraph CC1Sub["CC Built-in Subagents"]
+                Sub1A[Explore]
+                Sub1B[Plan]
+                Sub1C[general-purpose]
+            end
+            CC1 --> Sub1A
+            CC1 --> Sub1B
+            CC1 --> Sub1C
+        end
+
+        subgraph Agent2["Agent Container"]
+            CC2[claude CLI]
+            StdioBridge2[MCP Stdio Bridge]
+            HookRelay2[Hook Relay Script]
+            CC2 <-->|"stdio JSON-RPC"| StdioBridge2
+            CC2 -->|"hook stdin/stdout"| HookRelay2
+
+            subgraph CC2Sub["CC Built-in Subagents"]
+                Sub2A[Explore]
+            end
+            CC2 --> Sub2A
+        end
+    end
+
+    CM -->|"docker run"| Agent1
+    CM -->|"docker run"| Agent2
+
+    StdioBridge1 -->|"HTTP POST"| MCPBroker
+    StdioBridge2 -->|"HTTP POST"| MCPBroker
+    HookRelay1 -->|"HTTP POST"| Hooks
+    HookRelay2 -->|"HTTP POST"| Hooks
+
+    CC1 -->|"stream-json stdout"| PM
+    CC2 -->|"stream-json stdout"| PM
+    PM --> Bridge
+    Bridge -->|"NormalizedMessage"| UI
+
+    MCPBroker <-.->|"send_message · read_messages · spawn_agent"| MCPBroker
+```
+
 ## Quick Start
 
 ```bash
