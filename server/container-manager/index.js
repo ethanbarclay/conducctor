@@ -34,6 +34,7 @@ export class ContainerManager extends EventEmitter {
       image = this.image,
     } = opts
 
+    const home = homedir()
     const dockerArgs = [
       'run',
       '--rm',
@@ -43,12 +44,16 @@ export class ContainerManager extends EventEmitter {
       '--cpus', cpus,
       // Mount project files
       ...(projectPath ? ['-v', `${projectPath}:/workspace:rw`] : []),
-      // Mount Claude config (read-only base, writable session layer)
-      '-v', `${homedir()}/.claude:/root/.claude:rw`,
+      // Mount Claude config directory (sessions, projects, cache)
+      '-v', `${home}/.claude:/root/.claude:rw`,
+      // Mount Claude config file (auth, API keys, settings)
+      '-v', `${home}/.claude.json:/root/.claude.json:rw`,
       // Network access to MCP broker on host
       '--add-host', 'host.docker.internal:host-gateway',
       '--env', `CONDUCTOR_MCP_URL=http://host.docker.internal:${this.mcpBrokerPort}/mcp`,
       '--env', `CONDUCTOR_AGENT_ID=${agentId}`,
+      // Pass through API key if set
+      ...(process.env.ANTHROPIC_API_KEY ? ['--env', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
       // Working directory
       '--workdir', '/workspace',
       image,
