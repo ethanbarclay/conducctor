@@ -652,6 +652,7 @@ export function useChatComposerState({
             model: claudeModel,
             sessionSummary,
             images: uploadedImages,
+            useContainer: toolsSettings?.containerIsolation !== false,
           },
         });
       }

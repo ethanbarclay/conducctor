@@ -54,6 +54,7 @@ export interface ClaudeSettings {
   disallowedTools: string[];
   skipPermissions: boolean;
   projectSortOrder: string;
+  containerIsolation: boolean;
   lastUpdated?: string;
   [key: string]: unknown;
 }

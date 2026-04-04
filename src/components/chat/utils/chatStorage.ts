@@ -51,6 +51,7 @@ export function getClaudeSettings(): ClaudeSettings {
       disallowedTools: [],
       skipPermissions: false,
       projectSortOrder: 'name',
+      containerIsolation: true,
     };
   }
 
@@ -62,6 +63,7 @@ export function getClaudeSettings(): ClaudeSettings {
       disallowedTools: Array.isArray(parsed.disallowedTools) ? parsed.disallowedTools : [],
       skipPermissions: Boolean(parsed.skipPermissions),
       projectSortOrder: parsed.projectSortOrder || 'name',
+      containerIsolation: parsed.containerIsolation !== false, // default true
     };
   } catch {
     return {
@@ -69,6 +71,7 @@ export function getClaudeSettings(): ClaudeSettings {
       disallowedTools: [],
       skipPermissions: false,
       projectSortOrder: 'name',
+      containerIsolation: true,
     };
   }
 }
