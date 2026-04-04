@@ -109,9 +109,9 @@ export function AgentGrid({
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-sm font-medium truncate capitalize">{agent.role}</div>
+                <div className="text-sm font-medium truncate capitalize">{agent.role || 'agent'}</div>
                 <div className="text-[10px] text-muted-foreground font-mono truncate">
-                  {agent.agentId.slice(0, 12)}…
+                  {(agent.agentId || '').slice(0, 12)}…
                 </div>
               </div>
               <StatusBadge status={agent.status} />

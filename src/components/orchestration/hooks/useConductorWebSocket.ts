@@ -103,13 +103,13 @@ export function useConductorWebSocket() {
       const rawAgents = (data.agents as Array<Record<string, unknown>>) || [];
       setState((prev) => ({
         ...prev,
-        agents: rawAgents.map((a) => ({
+        agents: rawAgents.filter((a) => a.agentId).map((a) => ({
           agentId: a.agentId as string,
-          role: a.role as string,
-          projectId: a.projectId as string,
+          role: (a.role as string) || 'agent',
+          projectId: (a.projectId as string) || '',
           sessionId: a.sessionId as string | undefined,
-          startedAt: a.startedAt as number,
-          tokenUsage: a.tokenUsage as { input: number; output: number },
+          startedAt: (a.startedAt as number) || Date.now(),
+          tokenUsage: (a.tokenUsage as { input: number; output: number }) || { input: 0, output: 0 },
           busy: a.busy as boolean,
           status: deriveStatus(a as Agent),
           contextPct: deriveContextPct(a as Agent),
@@ -120,6 +120,7 @@ export function useConductorWebSocket() {
 
     if (type === 'agent:spawned') {
       const agentId = data.agentId as string;
+      if (!agentId) return;
       setState((prev) => {
         if (prev.agents.some((a) => a.agentId === agentId)) return prev;
         return {
