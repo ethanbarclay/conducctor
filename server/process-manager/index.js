@@ -2,8 +2,8 @@
  * Conductor Process Manager
  *
  * Spawns and manages Claude Code subprocess instances.
- * Uses interactive mode (--input-format stream-json) so processes stay
- * alive across multiple messages. The initial prompt is sent via stdin.
+ * First message uses -p (print mode). Follow-up messages spawn a new
+ * process with --resume to continue the same session.
  */
 
 import { spawn } from 'child_process'
@@ -16,115 +16,150 @@ export class ProcessManager extends EventEmitter {
     this.db = db
     this.contextMonitor = contextMonitor
     this.containerManager = containerManager
-    this.processes = new Map() // agentId → { process, sessionId, projectId, metadata }
+    this.agents = new Map() // agentId → { sessionId, projectId, role, ... }
+    this.activeProcs = new Map() // agentId → child_process (only while running)
   }
 
   /**
    * Spawn a new Claude Code agent process.
-   * Always uses interactive mode so the process stays alive for follow-up messages.
-   * The initial prompt is sent via stdin after the process starts.
+   * Uses -p for the initial prompt (reliable single-shot with output).
+   * Follow-up messages use --resume with the captured session ID.
    */
   async spawn(opts) {
     const agentId = opts.agentId || randomUUID()
-    const args = this._buildArgs(opts)
 
-    const proc = opts.useContainer
-      ? await this.containerManager.spawn(agentId, args, opts)
-      : this._spawnLocal(args)
-
-    this.processes.set(agentId, {
-      process: proc,
-      sessionId: opts.sessionId || null, // updated when CLI reports real session_id
+    this.agents.set(agentId, {
+      sessionId: opts.sessionId || null,
       projectId: opts.projectId,
       role: opts.role || 'agent',
+      useContainer: !!opts.useContainer,
       startedAt: Date.now(),
       tokenUsage: { input: 0, output: 0 },
+      busy: false,
     })
 
-    this._attachHandlers(agentId, proc)
     this.emit('agent:spawned', { agentId, ...opts })
 
-    // Send initial prompt via stdin (interactive mode)
-    if (opts.prompt && !opts.sessionId) {
-      this._writeStdin(proc, opts.prompt)
+    // If there's a prompt, run it now
+    if (opts.prompt) {
+      await this._runTurn(agentId, opts.prompt, opts.sessionId)
     }
 
     return agentId
   }
 
   /**
-   * Send a user message to a running agent via stdin
+   * Send a follow-up message to an agent. Spawns a new --resume process.
    */
-  sendInput(agentId, message) {
-    const entry = this.processes.get(agentId)
-    if (!entry) throw new Error(`Agent ${agentId} not found`)
-    this._writeStdin(entry.process, message)
+  async sendInput(agentId, message) {
+    const agent = this.agents.get(agentId)
+    if (!agent) throw new Error(`Agent ${agentId} not found`)
+    if (!agent.sessionId) throw new Error(`Agent ${agentId} has no session to resume`)
+    await this._runTurn(agentId, message, agent.sessionId)
   }
 
   /**
-   * Trigger compaction on a running agent
+   * Trigger compaction on an agent
    */
-  compact(agentId) {
+  async compact(agentId) {
     return this.sendInput(agentId, '/compact')
   }
 
   /**
-   * Kill an agent process
+   * Kill an active agent process
    */
   kill(agentId, signal = 'SIGTERM') {
-    const entry = this.processes.get(agentId)
-    if (entry) {
-      entry.process.kill(signal)
-      this.processes.delete(agentId)
-      this.emit('agent:killed', { agentId })
+    const proc = this.activeProcs.get(agentId)
+    if (proc) {
+      proc.kill(signal)
+      this.activeProcs.delete(agentId)
     }
+    this.agents.delete(agentId)
+    this.emit('agent:killed', { agentId })
   }
 
   /**
-   * List all running agents
+   * List all agents (both idle and busy)
    */
   list() {
-    return Array.from(this.processes.entries()).map(([agentId, entry]) => ({
+    return Array.from(this.agents.entries()).map(([agentId, entry]) => ({
       agentId,
       role: entry.role,
       projectId: entry.projectId,
       sessionId: entry.sessionId,
       startedAt: entry.startedAt,
       tokenUsage: entry.tokenUsage,
+      busy: entry.busy,
     }))
   }
 
   /**
-   * Update the stored session ID for an agent (called when CLI reports real session_id)
+   * Update the stored session ID for an agent
    */
   setSessionId(agentId, sessionId) {
-    const entry = this.processes.get(agentId)
-    if (entry) {
-      entry.sessionId = sessionId
+    const agent = this.agents.get(agentId)
+    if (agent) {
+      agent.sessionId = sessionId
     }
   }
 
   // ─── Private ────────────────────────────────────────────────────────────────
 
-  _buildArgs(opts) {
-    // Always use interactive mode with stream-json I/O
-    const args = [
-      '--output-format', 'stream-json',
-      '--input-format', 'stream-json',
-      '--verbose',
-    ]
-    if (opts.sessionId) {
-      args.push('--resume', opts.sessionId)
-    }
-    return args
-  }
+  /**
+   * Run a single turn: spawn claude -p "message" (or --resume), collect output, emit events
+   */
+  _runTurn(agentId, message, sessionId) {
+    return new Promise((resolve, reject) => {
+      const agent = this.agents.get(agentId)
+      if (!agent) return reject(new Error('Agent not found'))
 
-  _writeStdin(proc, message) {
-    const payload = JSON.stringify({
-      type: 'user',
-      message: { role: 'user', content: message },
-    }) + '\n'
-    proc.stdin.write(payload)
+      agent.busy = true
+
+      const args = ['--output-format', 'stream-json', '--verbose']
+      if (sessionId) {
+        args.push('--resume', sessionId, '-p', message)
+      } else {
+        args.push('-p', message)
+      }
+
+      const proc = agent.useContainer
+        ? this.containerManager.spawn(agentId, args, { projectPath: agent.projectId })
+        : Promise.resolve(this._spawnLocal(args))
+
+      Promise.resolve(proc).then((childProc) => {
+        this.activeProcs.set(agentId, childProc)
+        let buffer = ''
+
+        childProc.stdout.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop()
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const event = JSON.parse(line)
+              this._handleStreamEvent(agentId, event)
+            } catch {
+              this.emit('agent:raw', { agentId, data: line })
+            }
+          }
+        })
+
+        childProc.stderr.on('data', (chunk) => {
+          this.emit('agent:error', { agentId, error: chunk.toString() })
+        })
+
+        childProc.on('exit', (code) => {
+          this.activeProcs.delete(agentId)
+          agent.busy = false
+          this.emit('agent:turn_complete', { agentId, code })
+          resolve(code)
+        })
+      }).catch((err) => {
+        agent.busy = false
+        reject(err)
+      })
+    })
   }
 
   _spawnLocal(args) {
@@ -134,56 +169,27 @@ export class ProcessManager extends EventEmitter {
     })
   }
 
-  _attachHandlers(agentId, proc) {
-    let buffer = ''
-
-    proc.stdout.on('data', (chunk) => {
-      buffer += chunk.toString()
-      const lines = buffer.split('\n')
-      buffer = lines.pop() // keep incomplete line
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const event = JSON.parse(line)
-          this._handleStreamEvent(agentId, event)
-        } catch {
-          // non-JSON output, emit as raw
-          this.emit('agent:raw', { agentId, data: line })
-        }
-      }
-    })
-
-    proc.stderr.on('data', (chunk) => {
-      this.emit('agent:error', { agentId, error: chunk.toString() })
-    })
-
-    proc.on('exit', (code) => {
-      this.processes.delete(agentId)
-      this.emit('agent:exit', { agentId, code })
-    })
-  }
-
   _handleStreamEvent(agentId, event) {
     // Capture the real CLI session_id
     if (event.session_id) {
-      const entry = this.processes.get(agentId)
-      if (entry && !entry.sessionId) {
-        entry.sessionId = event.session_id
+      const agent = this.agents.get(agentId)
+      if (agent && !agent.sessionId) {
+        agent.sessionId = event.session_id
       }
     }
 
-    // Track token usage for context monitor
+    // Track token usage
     if (event.message?.usage) {
-      const entry = this.processes.get(agentId)
-      if (entry) {
+      const agent = this.agents.get(agentId)
+      if (agent) {
         const u = event.message.usage
-        entry.tokenUsage.input = u.input_tokens || entry.tokenUsage.input
-        entry.tokenUsage.output = u.output_tokens || entry.tokenUsage.output
-        this.contextMonitor?.onUsage(agentId, entry.tokenUsage)
+        agent.tokenUsage.input = u.input_tokens || agent.tokenUsage.input
+        agent.tokenUsage.output = u.output_tokens || agent.tokenUsage.output
+        this.contextMonitor?.onUsage(agentId, agent.tokenUsage)
       }
     }
 
-    // Emit typed events for the WebSocket layer + observability
+    // Emit for bridge + WebSocket
     this.emit('agent:event', { agentId, event })
   }
 }

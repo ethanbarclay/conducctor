@@ -5,28 +5,24 @@
  * subprocesses, optionally in Docker) into the existing WebSocketWriter
  * flow that the UI expects.
  *
- * Translates stream-json events from the CLI into NormalizedMessage format,
- * matching the interface used by queryClaudeSDK().
- *
- * CLI stream-json event types (with --verbose):
- *   { type: "system", subtype: "init", session_id, cwd, tools, model, ... }
- *   { type: "assistant", message: { role: "assistant", content: [{type:"thinking",...}, {type:"text",...}, {type:"tool_use",...}] }, session_id }
- *   { type: "user", message: { role: "user", content: [{type:"tool_result",...}] }, session_id }
- *   { type: "result", subtype: "success"|"error", result, session_id, modelUsage, ... }
+ * Translates stream-json events from the CLI into NormalizedMessage format.
+ * ProcessManager runs one turn at a time (claude -p "msg" / --resume -p "msg").
+ * Events stream in real-time during each turn.
  */
 
 import { createNormalizedMessage } from './providers/types.js';
 
 const PROVIDER = 'claude';
 
+// Active bridges: agentId → { writer, cleanup }
+const activeBridges = new Map();
+
 /**
  * Spawn a Claude Code session via the conductor ProcessManager and stream
  * normalized events to the given writer (WebSocketWriter or SSEStreamWriter).
- *
- * This is the containerized alternative to queryClaudeSDK().
  */
 export async function queryClaudeContainerized(command, options = {}, writer, conductor) {
-  const { processManager, mcpBroker } = conductor;
+  const { processManager } = conductor;
   const {
     projectPath,
     cwd,
@@ -37,7 +33,6 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
 
   const workingDir = projectPath || cwd;
 
-  // Warn if running without container
   if (!useContainer) {
     writer.send(createNormalizedMessage({
       kind: 'status',
@@ -47,38 +42,22 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     }));
   }
 
-  let agentId;
-  try {
-    agentId = await processManager.spawn({
-      prompt: command || undefined,
-      projectId: workingDir,
-      sessionId: sessionId || undefined,
-      useContainer,
-      role,
-    });
-  } catch (err) {
-    writer.send(createNormalizedMessage({
-      kind: 'error',
-      content: `Failed to spawn agent: ${err.message}`,
-      sessionId: sessionId || '',
-      provider: PROVIDER,
-    }));
-    return;
-  }
-
-  // Track the real session ID from the CLI (set on init event)
+  // Set up event listeners BEFORE spawning so we catch everything
   let realSessionId = sessionId || null;
 
-  // Bridge stream-json events → NormalizedMessage → writer
   const eventHandler = ({ agentId: eid, event }) => {
-    if (eid !== agentId) return;
+    // We listen to all events and filter by our agentId below
+    const bridge = activeBridges.get(eid);
+    if (!bridge || bridge.writer !== writer) return;
 
-    // ── system init: capture session_id ──────────────────────────────────
+    const sid = realSessionId || eid;
+    console.log(`[Conductor Bridge] event type=${event.type} subtype=${event.subtype || ''} agentId=${eid}`);
+
+    // ── system init: capture session_id
     if (event.type === 'system' && event.subtype === 'init') {
       if (event.session_id) {
         realSessionId = event.session_id;
-        // Store the real session ID in ProcessManager
-        processManager.setSessionId(agentId, realSessionId);
+        processManager.setSessionId(eid, realSessionId);
         if (writer.setSessionId) {
           writer.setSessionId(realSessionId);
         }
@@ -92,10 +71,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
-    // Use realSessionId if available, fall back to agentId
-    const sid = realSessionId || agentId;
-
-    // ── assistant message: extract content blocks ────────────────────────
+    // ── assistant message: extract content blocks
     if (event.type === 'assistant' && event.message?.content) {
       const content = event.message.content;
       const parentToolUseId = event.parent_tool_use_id || null;
@@ -105,7 +81,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
           writer.send(createNormalizedMessage({
             kind: 'thinking',
             content: block.thinking,
-            sessionId: sid,
+            sessionId: realSessionId || sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
@@ -114,7 +90,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             kind: 'text',
             role: 'assistant',
             content: block.text,
-            sessionId: sid,
+            sessionId: realSessionId || sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
@@ -124,14 +100,14 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             toolName: block.name,
             toolInput: block.input,
             toolId: block.id,
-            sessionId: sid,
+            sessionId: realSessionId || sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
         }
       }
 
-      // Send token budget from usage data on assistant messages
+      // Token budget from usage
       if (event.message.usage) {
         const u = event.message.usage;
         const used = (u.input_tokens || 0) + (u.output_tokens || 0)
@@ -141,14 +117,14 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
           kind: 'status',
           text: 'token_budget',
           tokenBudget: { used, total: contextWindow },
-          sessionId: realSessionId,
+          sessionId: realSessionId || sid,
           provider: PROVIDER,
         }));
       }
       return;
     }
 
-    // ── user message (tool results coming back) ──────────────────────────
+    // ── user message (tool results)
     if (event.type === 'user' && event.message?.content) {
       for (const block of event.message.content) {
         if (block.type === 'tool_result') {
@@ -157,7 +133,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             toolId: block.tool_use_id || '',
             content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
             isError: Boolean(block.is_error),
-            sessionId: sid,
+            sessionId: realSessionId || sid,
             provider: PROVIDER,
           }));
         }
@@ -165,9 +141,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
-    // ── result: session complete ─────────────────────────────────────────
+    // ── result: final token budget
     if (event.type === 'result') {
-      // Extract final token budget from modelUsage
       if (event.modelUsage) {
         const modelKey = Object.keys(event.modelUsage)[0];
         const m = event.modelUsage[modelKey];
@@ -179,67 +154,89 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             kind: 'status',
             text: 'token_budget',
             tokenBudget: { used, total: contextWindow },
-            sessionId: sid,
+            sessionId: realSessionId || sid,
             provider: PROVIDER,
           }));
         }
       }
-      // Note: completion is sent on agent:exit, not here, since the CLI
-      // process may still be running (interactive mode)
-      return;
-    }
-
-    // ── rate_limit_event: ignore silently ────────────────────────────────
-    if (event.type === 'rate_limit_event') {
       return;
     }
   };
 
   const errorHandler = ({ agentId: eid, error }) => {
-    if (eid !== agentId) return;
+    const bridge = activeBridges.get(eid);
+    if (!bridge || bridge.writer !== writer) return;
+    console.log(`[Conductor Bridge] ERROR agentId=${eid}:`, error);
     writer.send(createNormalizedMessage({
       kind: 'error',
       content: error,
-      sessionId: realSessionId,
+      sessionId: realSessionId || eid,
       provider: PROVIDER,
     }));
   };
 
-  const exitHandler = ({ agentId: eid, code }) => {
-    if (eid !== agentId) return;
-    cleanup();
+  const turnCompleteHandler = ({ agentId: eid, code }) => {
+    const bridge = activeBridges.get(eid);
+    if (!bridge || bridge.writer !== writer) return;
+    console.log(`[Conductor Bridge] TURN COMPLETE agentId=${eid} code=${code}`);
     writer.send(createNormalizedMessage({
       kind: 'complete',
       exitCode: code,
-      sessionId: realSessionId,
+      sessionId: realSessionId || eid,
       provider: PROVIDER,
     }));
   };
+
+  // Register listeners
+  processManager.on('agent:event', eventHandler);
+  processManager.on('agent:error', errorHandler);
+  processManager.on('agent:turn_complete', turnCompleteHandler);
 
   function cleanup() {
     processManager.removeListener('agent:event', eventHandler);
     processManager.removeListener('agent:error', errorHandler);
-    processManager.removeListener('agent:exit', exitHandler);
+    processManager.removeListener('agent:turn_complete', turnCompleteHandler);
+    activeBridges.delete(agentId);
   }
 
-  processManager.on('agent:event', eventHandler);
-  processManager.on('agent:error', errorHandler);
-  processManager.on('agent:exit', exitHandler);
+  // Pre-generate agentId and register bridge BEFORE spawning,
+  // so event handlers can match events during the awaited first turn
+  const { randomUUID } = await import('crypto');
+  const agentId = randomUUID();
+  activeBridges.set(agentId, { writer, cleanup, realSessionId: () => realSessionId });
 
-  // Return agentId so caller can track/abort
+  console.log(`[Conductor Bridge] Spawning agentId=${agentId} useContainer=${useContainer}`);
+
+  try {
+    await processManager.spawn({
+      prompt: command || undefined,
+      projectId: workingDir,
+      sessionId: sessionId || undefined,
+      useContainer,
+      role,
+      agentId, // pass pre-generated ID
+    });
+  } catch (err) {
+    cleanup();
+    writer.send(createNormalizedMessage({
+      kind: 'error',
+      content: `Failed to spawn agent: ${err.message}`,
+      sessionId: sessionId || '',
+      provider: PROVIDER,
+    }));
+    return;
+  }
+
+  console.log(`[Conductor Bridge] First turn complete agentId=${agentId}`);
+
   return agentId;
-}
-
-/**
- * Send input to a running containerized session
- */
-export function sendContainerizedInput(agentId, message, conductor) {
-  conductor.processManager.sendInput(agentId, message);
 }
 
 /**
  * Abort/kill a containerized session
  */
 export function abortContainerizedSession(agentId, conductor) {
+  const bridge = activeBridges.get(agentId);
+  if (bridge) bridge.cleanup();
   conductor.processManager.kill(agentId);
 }
