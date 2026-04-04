@@ -35,19 +35,26 @@ export class ContainerManager extends EventEmitter {
     } = opts
 
     const home = homedir()
+    // Run container as host user so session files have correct ownership
+    const uid = process.getuid?.() ?? 1000
+    const gid = process.getgid?.() ?? 1000
     const dockerArgs = [
       'run',
       '--rm',
       '--name', `conductor-agent-${agentId.slice(0, 8)}`,
+      // Run as host user to avoid root-owned session files
+      '--user', `${uid}:${gid}`,
       // Resource limits
       '--memory', memory,
       '--cpus', cpus,
       // Mount project files
       ...(projectPath ? ['-v', `${projectPath}:/workspace:rw`] : []),
       // Mount Claude config directory (sessions, projects, cache)
-      '-v', `${home}/.claude:/root/.claude:rw`,
+      '-v', `${home}/.claude:/home/node/.claude:rw`,
       // Mount Claude config file (auth, API keys, settings)
-      '-v', `${home}/.claude.json:/root/.claude.json:rw`,
+      '-v', `${home}/.claude.json:/home/node/.claude.json:rw`,
+      // Set HOME so claude CLI finds config at the right place
+      '--env', `HOME=/home/node`,
       // Network access to MCP broker on host
       '--add-host', 'host.docker.internal:host-gateway',
       '--env', `CONDUCTOR_MCP_URL=http://host.docker.internal:${this.mcpBrokerPort}/mcp`,

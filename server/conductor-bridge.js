@@ -67,11 +67,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
   }
 
   // Track the real session ID from the CLI (set on init event)
-  let realSessionId = sessionId || agentId;
-
-  if (writer.setSessionId) {
-    writer.setSessionId(realSessionId);
-  }
+  let realSessionId = sessionId || null;
 
   // Bridge stream-json events → NormalizedMessage → writer
   const eventHandler = ({ agentId: eid, event }) => {
@@ -81,6 +77,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     if (event.type === 'system' && event.subtype === 'init') {
       if (event.session_id) {
         realSessionId = event.session_id;
+        // Store the real session ID in ProcessManager
+        processManager.setSessionId(agentId, realSessionId);
         if (writer.setSessionId) {
           writer.setSessionId(realSessionId);
         }
@@ -94,6 +92,9 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
+    // Use realSessionId if available, fall back to agentId
+    const sid = realSessionId || agentId;
+
     // ── assistant message: extract content blocks ────────────────────────
     if (event.type === 'assistant' && event.message?.content) {
       const content = event.message.content;
@@ -104,7 +105,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
           writer.send(createNormalizedMessage({
             kind: 'thinking',
             content: block.thinking,
-            sessionId: realSessionId,
+            sessionId: sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
@@ -113,7 +114,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             kind: 'text',
             role: 'assistant',
             content: block.text,
-            sessionId: realSessionId,
+            sessionId: sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
@@ -123,7 +124,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             toolName: block.name,
             toolInput: block.input,
             toolId: block.id,
-            sessionId: realSessionId,
+            sessionId: sid,
             provider: PROVIDER,
             ...(parentToolUseId && { parentToolUseId }),
           }));
@@ -156,7 +157,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             toolId: block.tool_use_id || '',
             content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
             isError: Boolean(block.is_error),
-            sessionId: realSessionId,
+            sessionId: sid,
             provider: PROVIDER,
           }));
         }
@@ -178,7 +179,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             kind: 'status',
             text: 'token_budget',
             tokenBudget: { used, total: contextWindow },
-            sessionId: realSessionId,
+            sessionId: sid,
             provider: PROVIDER,
           }));
         }

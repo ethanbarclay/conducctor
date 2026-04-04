@@ -2,8 +2,8 @@
  * Conductor Process Manager
  *
  * Spawns and manages Claude Code subprocess instances.
- * Each agent session is an isolated CC process communicating
- * via --output-format stream-json / --input-format stream-json.
+ * Uses interactive mode (--input-format stream-json) so processes stay
+ * alive across multiple messages. The initial prompt is sent via stdin.
  */
 
 import { spawn } from 'child_process'
@@ -20,46 +20,45 @@ export class ProcessManager extends EventEmitter {
   }
 
   /**
-   * Spawn a new Claude Code agent process
-   * @param {object} opts
-   * @param {string} opts.prompt         - Initial prompt
-   * @param {string} opts.projectId      - Project this agent belongs to
-   * @param {string} opts.sessionId      - Resume existing session (optional)
-   * @param {string} opts.agentId        - Override agent ID (optional)
-   * @param {boolean} opts.useContainer  - Run in Docker container
-   * @param {object} opts.mcpConfig      - MCP config to inject (includes broker)
-   * @param {string} opts.role           - Agent role label (e.g. "frontend", "qa")
+   * Spawn a new Claude Code agent process.
+   * Always uses interactive mode so the process stays alive for follow-up messages.
+   * The initial prompt is sent via stdin after the process starts.
    */
   async spawn(opts) {
     const agentId = opts.agentId || randomUUID()
     const args = this._buildArgs(opts)
 
-    const process = opts.useContainer
+    const proc = opts.useContainer
       ? await this.containerManager.spawn(agentId, args, opts)
       : this._spawnLocal(args)
 
     this.processes.set(agentId, {
-      process,
-      sessionId: opts.sessionId,
+      process: proc,
+      sessionId: opts.sessionId || null, // updated when CLI reports real session_id
       projectId: opts.projectId,
       role: opts.role || 'agent',
       startedAt: Date.now(),
       tokenUsage: { input: 0, output: 0 },
     })
 
-    this._attachHandlers(agentId, process)
+    this._attachHandlers(agentId, proc)
     this.emit('agent:spawned', { agentId, ...opts })
+
+    // Send initial prompt via stdin (interactive mode)
+    if (opts.prompt && !opts.sessionId) {
+      this._writeStdin(proc, opts.prompt)
+    }
+
     return agentId
   }
 
   /**
-   * Send a message/command to a running agent via stdin
+   * Send a user message to a running agent via stdin
    */
   sendInput(agentId, message) {
     const entry = this.processes.get(agentId)
     if (!entry) throw new Error(`Agent ${agentId} not found`)
-    const payload = JSON.stringify({ type: 'user', message }) + '\n'
-    entry.process.stdin.write(payload)
+    this._writeStdin(entry.process, message)
   }
 
   /**
@@ -95,20 +94,37 @@ export class ProcessManager extends EventEmitter {
     }))
   }
 
+  /**
+   * Update the stored session ID for an agent (called when CLI reports real session_id)
+   */
+  setSessionId(agentId, sessionId) {
+    const entry = this.processes.get(agentId)
+    if (entry) {
+      entry.sessionId = sessionId
+    }
+  }
+
   // ─── Private ────────────────────────────────────────────────────────────────
 
   _buildArgs(opts) {
-    const args = ['--output-format', 'stream-json', '--verbose']
+    // Always use interactive mode with stream-json I/O
+    const args = [
+      '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
+      '--verbose',
+    ]
     if (opts.sessionId) {
-      // Resume mode: interactive, accepts stdin
-      args.push('--input-format', 'stream-json', '--resume', opts.sessionId)
+      args.push('--resume', opts.sessionId)
     }
-    // Note: --mcp-config requires a proper MCP stdio/SSE server.
-    // The conductor MCP broker uses HTTP POST which isn't compatible with
-    // Claude CLI's --mcp-config flag. Inter-agent messaging will be wired
-    // via hooks or a stdio MCP wrapper in a future update.
-    if (opts.prompt && !opts.sessionId) args.push('-p', opts.prompt)
     return args
+  }
+
+  _writeStdin(proc, message) {
+    const payload = JSON.stringify({
+      type: 'user_message',
+      message: { role: 'user', content: message },
+    }) + '\n'
+    proc.stdin.write(payload)
   }
 
   _spawnLocal(args) {
@@ -148,25 +164,26 @@ export class ProcessManager extends EventEmitter {
   }
 
   _handleStreamEvent(agentId, event) {
+    // Capture the real CLI session_id
+    if (event.session_id) {
+      const entry = this.processes.get(agentId)
+      if (entry && !entry.sessionId) {
+        entry.sessionId = event.session_id
+      }
+    }
+
     // Track token usage for context monitor
-    if (event.usage) {
+    if (event.message?.usage) {
       const entry = this.processes.get(agentId)
       if (entry) {
-        entry.tokenUsage.input += event.usage.input_tokens || 0
-        entry.tokenUsage.output += event.usage.output_tokens || 0
+        const u = event.message.usage
+        entry.tokenUsage.input = u.input_tokens || entry.tokenUsage.input
+        entry.tokenUsage.output = u.output_tokens || entry.tokenUsage.output
         this.contextMonitor?.onUsage(agentId, entry.tokenUsage)
       }
     }
 
     // Emit typed events for the WebSocket layer + observability
     this.emit('agent:event', { agentId, event })
-
-    // Specific event type emissions
-    if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
-      this.emit('agent:thinking', { agentId, thinking: event.content_block.thinking })
-    }
-    if (event.type === 'content_block_delta' && event.delta?.type === 'tool_use') {
-      this.emit('agent:tool_use', { agentId, tool: event.delta })
-    }
   }
 }
