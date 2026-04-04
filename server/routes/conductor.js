@@ -226,6 +226,20 @@ router.post('/tasks', (req, res) => {
 });
 
 /**
+ * POST /api/conductor/tasks/:taskId/run
+ * Manually trigger a scheduled task
+ */
+router.post('/tasks/:taskId/run', async (req, res) => {
+    try {
+        const { scheduler } = getConductor(req);
+        const result = await scheduler.runTaskNow(parseInt(req.params.taskId, 10));
+        res.json({ ...result, status: 'running' });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+/**
  * DELETE /api/conductor/tasks/:taskId
  * Delete a scheduled task
  */

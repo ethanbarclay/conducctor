@@ -90,6 +90,13 @@ export default function SchedulerPanel({ isVisible }: { isVisible: boolean }) {
     loadTasks();
   }, [token, loadTasks]);
 
+  const [runningTask, setRunningTask] = useState<number | null>(null);
+  const handleRunNow = useCallback(async (id: number) => {
+    setRunningTask(id);
+    await schedulerFetch(`/tasks/${id}/run`, token, { method: 'POST' });
+    setTimeout(() => { setRunningTask(null); loadTasks(); }, 2000);
+  }, [token, loadTasks]);
+
   const loadRuns = useCallback(async (taskId: number) => {
     const data = await schedulerFetch(`/tasks/${taskId}/runs?limit=10`, token);
     setRuns((prev) => ({ ...prev, [taskId]: data.runs || [] }));
@@ -206,6 +213,14 @@ export default function SchedulerPanel({ isVisible }: { isVisible: boolean }) {
                 <span>Role: {task.agent_role}</span>
                 <span>Last: {formatTime(task.last_run)}</span>
                 <span className="ml-auto flex gap-1">
+                  <button
+                    onClick={() => handleRunNow(task.id)}
+                    disabled={runningTask === task.id}
+                    className="text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                  >
+                    {runningTask === task.id ? 'Running...' : 'Run Now'}
+                  </button>
+                  <span>|</span>
                   <button
                     onClick={() => loadRuns(task.id)}
                     className="hover:text-foreground underline"

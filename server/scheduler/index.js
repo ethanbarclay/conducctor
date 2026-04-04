@@ -111,6 +111,47 @@ export class Scheduler extends EventEmitter {
     this.db.prepare('UPDATE scheduled_tasks SET enabled = 0 WHERE id = ?').run(taskId)
   }
 
+  /**
+   * Manually trigger a task run regardless of enabled status
+   */
+  async runTaskNow(taskId) {
+    const task = this.db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(taskId)
+    if (!task) throw new Error(`Task ${taskId} not found`)
+
+    this.emit('task:start', { taskId, task })
+
+    const run = this.db.prepare('INSERT INTO task_runs (task_id) VALUES (?)').run(taskId)
+    const runId = run.lastInsertRowid
+
+    try {
+      const agentId = await this.processManager.spawn({
+        prompt: task.prompt,
+        projectId: task.project_id,
+        role: task.agent_role,
+        useContainer: !!task.use_container,
+        permissionMode: 'bypassPermissions',
+      })
+
+      this.db.prepare('UPDATE task_runs SET agent_id = ? WHERE id = ?').run(agentId, runId)
+      this.db.prepare('UPDATE scheduled_tasks SET last_run = unixepoch() WHERE id = ?').run(taskId)
+
+      this.processManager.once('agent:turn_complete', ({ agentId: exitedId, code }) => {
+        if (exitedId === agentId) {
+          this.db.prepare('UPDATE task_runs SET ended_at = unixepoch(), status = ? WHERE id = ?')
+            .run(code === 0 ? 'success' : 'failed', runId)
+          this.emit('task:complete', { taskId, runId, agentId, code })
+        }
+      })
+
+      return { runId, agentId }
+    } catch (err) {
+      this.db.prepare('UPDATE task_runs SET ended_at = unixepoch(), status = ? WHERE id = ?')
+        .run('error', runId)
+      this.emit('task:error', { taskId, runId, error: err.message })
+      throw err
+    }
+  }
+
   listTasks() {
     return this.db.prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC').all()
   }

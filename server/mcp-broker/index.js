@@ -124,6 +124,17 @@ const MCP_TOOLS = [
     },
   },
   {
+    name: 'run_scheduled_task',
+    description: 'Manually trigger a scheduled task to run immediately, regardless of its cron schedule or enabled status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'number', description: 'ID of the task to run' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
     name: 'delete_scheduled_task',
     description: 'Delete a scheduled task by ID',
     inputSchema: {
@@ -186,10 +197,10 @@ export class MCPBroker extends EventEmitter {
       if (req.method === 'POST' && req.url === '/mcp') {
         let body = ''
         req.on('data', (chunk) => (body += chunk))
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
             const msg = JSON.parse(body)
-            const result = this._handleMCPRequest(agentId, msg)
+            const result = await this._handleMCPRequest(agentId, msg)
             res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify(result))
           } catch (e) {
@@ -217,7 +228,7 @@ export class MCPBroker extends EventEmitter {
 
   // ─── Tool Handlers ───────────────────────────────────────────────────────────
 
-  _handleMCPRequest(fromAgentId, msg) {
+  async _handleMCPRequest(fromAgentId, msg) {
     const { method, params } = msg
 
     if (method === 'tools/list') {
@@ -226,13 +237,13 @@ export class MCPBroker extends EventEmitter {
 
     if (method === 'tools/call') {
       const { name, arguments: args } = params
-      return this._callTool(fromAgentId, name, args)
+      return await this._callTool(fromAgentId, name, args)
     }
 
     return { error: `Unknown method: ${method}` }
   }
 
-  _callTool(fromAgentId, name, args) {
+  async _callTool(fromAgentId, name, args) {
     switch (name) {
       case 'send_message': {
         this.db.prepare(
@@ -418,6 +429,20 @@ export class MCPBroker extends EventEmitter {
             type: 'text',
             text: `Task ${updated.id} "${updated.name}" updated. Cron: ${updated.cron_expression}`,
           }],
+        }
+      }
+
+      case 'run_scheduled_task': {
+        try {
+          const { runId, agentId } = await this.scheduler.runTaskNow(args.task_id)
+          return {
+            content: [{
+              type: 'text',
+              text: `Task ${args.task_id} triggered manually. Run ID: ${runId}, Agent: ${agentId.slice(0, 8)}. The agent is now executing.`,
+            }],
+          }
+        } catch (err) {
+          return { error: err.message }
         }
       }
 
