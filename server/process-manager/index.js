@@ -174,6 +174,7 @@ export class ProcessManager extends EventEmitter {
         'mcp__conductor__spawn_agent',
         'mcp__conductor__schedule_task',
         'mcp__conductor__list_scheduled_tasks',
+        'mcp__conductor__update_scheduled_task',
         'mcp__conductor__delete_scheduled_task',
       ]
       const allAllowed = [...(agent.allowedTools || []), ...conductorTools]

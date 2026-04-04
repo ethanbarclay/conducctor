@@ -109,6 +109,21 @@ const MCP_TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'update_scheduled_task',
+    description: 'Update an existing scheduled task. Only provided fields are changed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'number', description: 'ID of the task to update' },
+        name: { type: 'string', description: 'New task name' },
+        cron: { type: 'string', description: 'New cron expression' },
+        prompt: { type: 'string', description: 'New agent prompt' },
+        role: { type: 'string', description: 'New agent role' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
     name: 'delete_scheduled_task',
     description: 'Delete a scheduled task by ID',
     inputSchema: {
@@ -382,9 +397,27 @@ export class MCPBroker extends EventEmitter {
           return { content: [{ type: 'text', text: 'No scheduled tasks.' }] }
         }
         const lines = tasks.map(t =>
-          `[${t.id}] "${t.name}" — ${t.cron_expression} — ${t.enabled ? 'enabled' : 'disabled'} — last: ${t.last_run ? new Date(t.last_run * 1000).toISOString() : 'never'}`
+          `[${t.id}] "${t.name}"\n  Cron: ${t.cron_expression} | ${t.enabled ? 'enabled' : 'disabled'} | Role: ${t.agent_role}\n  Last run: ${t.last_run ? new Date(t.last_run * 1000).toISOString() : 'never'}\n  Prompt: ${t.prompt.slice(0, 200)}${t.prompt.length > 200 ? '...' : ''}`
         )
-        return { content: [{ type: 'text', text: lines.join('\n') }] }
+        return { content: [{ type: 'text', text: lines.join('\n\n') }] }
+      }
+
+      case 'update_scheduled_task': {
+        const updated = this.scheduler.updateTask(args.task_id, {
+          name: args.name,
+          cron: args.cron,
+          prompt: args.prompt,
+          role: args.role,
+        })
+        if (!updated) {
+          return { error: `Task ${args.task_id} not found` }
+        }
+        return {
+          content: [{
+            type: 'text',
+            text: `Task ${updated.id} "${updated.name}" updated. Cron: ${updated.cron_expression}`,
+          }],
+        }
       }
 
       case 'delete_scheduled_task': {

@@ -72,6 +72,29 @@ export class Scheduler extends EventEmitter {
     return task
   }
 
+  updateTask(taskId, updates) {
+    const task = this.db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(taskId)
+    if (!task) return null
+    this._unschedule(taskId)
+
+    const fields = []
+    const values = []
+    if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name) }
+    if (updates.cron !== undefined) { fields.push('cron_expression = ?'); values.push(updates.cron) }
+    if (updates.prompt !== undefined) { fields.push('prompt = ?'); values.push(updates.prompt) }
+    if (updates.role !== undefined) { fields.push('agent_role = ?'); values.push(updates.role) }
+    if (updates.projectId !== undefined) { fields.push('project_id = ?'); values.push(updates.projectId) }
+
+    if (fields.length > 0) {
+      values.push(taskId)
+      this.db.prepare(`UPDATE scheduled_tasks SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+    }
+
+    const updated = this.db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(taskId)
+    if (updated.enabled) this._schedule(updated)
+    return updated
+  }
+
   deleteTask(taskId) {
     this._unschedule(taskId)
     this.db.prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(taskId)
