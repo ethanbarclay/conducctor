@@ -454,12 +454,12 @@ app.use('/api/sessions', authenticateToken, messagesRoutes);
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);
 
-// Conductor orchestration API Routes (protected)
-app.use('/api/conductor', authenticateToken, conductorRoutes);
-
 // Hooks receiver (no auth — called from containers and SDK callbacks)
 const hooksRouter = createHooksReceiver({ db, broadcastFn: broadcastConductorEvent });
 app.use('/api/conductor/hooks', hooksRouter);
+
+// Conductor orchestration API Routes (protected)
+app.use('/api/conductor', authenticateToken, conductorRoutes);
 
 // Serve public files (like api-docs.html)
 app.use(express.static(path.join(__dirname, '../public')));
