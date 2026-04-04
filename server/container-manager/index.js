@@ -8,7 +8,11 @@
 import { spawn } from 'child_process'
 import { EventEmitter } from 'events'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const BRIDGE_SCRIPT = join(__dirname, '..', 'mcp-stdio-bridge.js')
 
 const DEFAULT_IMAGE = 'conductor-agent:latest'
 const DEFAULT_MEMORY = '2g'
@@ -49,6 +53,8 @@ export class ContainerManager extends EventEmitter {
       '--cpus', cpus,
       // Mount project files at the SAME path as the host so session paths match
       ...(projectPath ? ['-v', `${projectPath}:${projectPath}:rw`] : []),
+      // Mount MCP stdio bridge script for inter-agent communication
+      '-v', `${BRIDGE_SCRIPT}:/opt/conductor/mcp-stdio-bridge.js:ro`,
       // Mount Claude config at the same host paths so sessions are filed correctly
       '-v', `${home}/.claude:${home}/.claude:rw`,
       '-v', `${home}/.claude.json:${home}/.claude.json:rw`,

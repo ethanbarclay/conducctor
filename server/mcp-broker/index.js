@@ -2,7 +2,8 @@
  * Conductor MCP Broker
  *
  * Exposes a local MCP server that all spawned CC agents connect to.
- * Provides inter-agent messaging, shared state, and agent discovery.
+ * Provides inter-agent messaging, shared state, agent discovery,
+ * and the ability to spawn new agents.
  *
  * Tools exposed to agents:
  *   - send_message(to, content)
@@ -11,10 +12,12 @@
  *   - get_shared_state(key)
  *   - set_shared_state(key, value)
  *   - request_review(from, context)
+ *   - spawn_agent(prompt, role, projectPath)
  */
 
 import { EventEmitter } from 'events'
 import { createServer } from 'http'
+import { randomUUID } from 'crypto'
 
 const MCP_TOOLS = [
   {
@@ -70,6 +73,19 @@ const MCP_TOOLS = [
         context: { type: 'string', description: 'What to review and why' },
       },
       required: ['reviewer', 'context'],
+    },
+  },
+  {
+    name: 'spawn_agent',
+    description: 'Spawn a new Claude Code agent to work on a subtask. Returns immediately with the new agent ID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Task prompt for the new agent' },
+        role: { type: 'string', description: 'Role name (e.g. "researcher", "qa", "frontend")' },
+        project_path: { type: 'string', description: 'Project directory (defaults to same as caller)' },
+      },
+      required: ['prompt'],
     },
   },
 ]
@@ -232,6 +248,36 @@ export class MCPBroker extends EventEmitter {
         ).run(fromAgentId, args.reviewer, content)
         this.emit('review:requested', { from: fromAgentId, reviewer: args.reviewer, context: args.context })
         return { content: [{ type: 'text', text: `Review requested from ${args.reviewer}` }] }
+      }
+
+      case 'spawn_agent': {
+        const callerAgent = this.processManager.agents?.get(fromAgentId)
+        const newAgentId = randomUUID()
+
+        // Spawn asynchronously — don't block the caller
+        this.processManager.spawn({
+          agentId: newAgentId,
+          prompt: args.prompt,
+          projectId: args.project_path || callerAgent?.projectId,
+          role: args.role || 'sub-agent',
+          useContainer: callerAgent?.useContainer ?? false,
+        }).catch(err => {
+          console.error(`[MCP Broker] spawn_agent failed:`, err.message)
+        })
+
+        this.emit('agent:spawned-by-agent', {
+          spawner: fromAgentId,
+          newAgentId,
+          role: args.role || 'sub-agent',
+          prompt: args.prompt,
+        })
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Agent ${newAgentId} spawned with role "${args.role || 'sub-agent'}". Use send_message("${newAgentId}", "your message") to communicate with it, or read_messages() to check for replies.`,
+          }],
+        }
       }
 
       default:

@@ -9,6 +9,12 @@
 import { spawn } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const BRIDGE_SCRIPT = join(__dirname, '..', 'mcp-stdio-bridge.js')
 
 export class ProcessManager extends EventEmitter {
   constructor({ db, contextMonitor, containerManager }) {
@@ -137,6 +143,12 @@ export class ProcessManager extends EventEmitter {
         args.push('--disallowedTools', ...agent.disallowedTools)
       }
 
+      // MCP config for inter-agent communication
+      const mcpConfigJson = this._buildMCPConfigArg(agentId)
+      if (mcpConfigJson) {
+        args.push('--mcp-config', mcpConfigJson)
+      }
+
       if (sessionId) {
         args.push('--resume', sessionId, '-p', message)
       } else {
@@ -180,6 +192,35 @@ export class ProcessManager extends EventEmitter {
         agent.busy = false
         reject(err)
       })
+    })
+  }
+
+  _buildMCPConfigArg(agentId) {
+    const agent = this.agents.get(agentId)
+    if (!agent) return null
+
+    const brokerPort = this.containerManager?.mcpBrokerPort || 3101
+    const brokerUrl = agent.useContainer
+      ? `http://host.docker.internal:${brokerPort}/mcp`
+      : `http://localhost:${brokerPort}/mcp`
+
+    // Inside Docker the bridge script is mounted at /opt/conductor/
+    // Locally it's resolved relative to this module
+    const bridgePath = agent.useContainer
+      ? '/opt/conductor/mcp-stdio-bridge.js'
+      : BRIDGE_SCRIPT
+
+    return JSON.stringify({
+      mcpServers: {
+        conductor: {
+          command: 'node',
+          args: [bridgePath],
+          env: {
+            CONDUCTOR_MCP_URL: brokerUrl,
+            CONDUCTOR_AGENT_ID: agentId,
+          },
+        },
+      },
     })
   }
 
