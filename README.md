@@ -135,6 +135,7 @@ AUTO_COMPACT_THRESHOLD=0.75   # Auto-compact at 75%
 
 - **Base UI**: [CloudCLI / claudecodeui](https://github.com/siteboon/claudecodeui) — session management, chat interface, mobile-responsive UI
 - **Observability inspiration**: [agents-observe](https://github.com/simple10/agents-observe) — timeline concept and event visualization patterns
+- **Origin**: [NanoClaw](https://github.com/dnakov/nanoclaw) — Discord-based multi-agent CC orchestrator that inspired this project
 - **Orchestration layer**: Custom-built — process manager, MCP broker, stdio bridge, container manager, context monitor, scheduler, hooks receiver
 
 ## License
