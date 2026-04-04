@@ -90,7 +90,7 @@ const MCP_TOOLS = [
   },
   {
     name: 'schedule_task',
-    description: `Create a recurring scheduled task that spawns an agent on a cron schedule. Cron times are in the server's local timezone (${process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone}). Common patterns: "*/5 * * * *" (every 5 min), "0 * * * *" (hourly), "0 9 * * *" (daily at 9am), "0 9 * * 1" (weekly Monday 9am).`,
+    description: `Create a recurring scheduled task. IMPORTANT: Cron times are already in local time (${process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone}). Do NOT convert to UTC. If the user says "10:30 AM", use "30 10 * * *" directly. Common patterns: "*/5 * * * *" (every 5 min), "0 9 * * *" (daily 9am local), "30 10 * * *" (daily 10:30am local).`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -110,7 +110,7 @@ const MCP_TOOLS = [
   },
   {
     name: 'update_scheduled_task',
-    description: 'Update an existing scheduled task. Only provided fields are changed.',
+    description: `Update an existing scheduled task. IMPORTANT: Cron times are in local time (${process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone}). Do NOT convert to UTC. "10:30 AM" = "30 10 * * *".`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -392,14 +392,15 @@ export class MCPBroker extends EventEmitter {
       }
 
       case 'list_scheduled_tasks': {
+        const tz = process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone
         const tasks = this.scheduler.listTasks()
         if (tasks.length === 0) {
           return { content: [{ type: 'text', text: 'No scheduled tasks.' }] }
         }
         const lines = tasks.map(t =>
-          `[${t.id}] "${t.name}"\n  Cron: ${t.cron_expression} | ${t.enabled ? 'enabled' : 'disabled'} | Role: ${t.agent_role}\n  Last run: ${t.last_run ? new Date(t.last_run * 1000).toISOString() : 'never'}\n  Prompt: ${t.prompt.slice(0, 200)}${t.prompt.length > 200 ? '...' : ''}`
+          `[${t.id}] "${t.name}"\n  Cron: ${t.cron_expression} (LOCAL TIME — ${tz}) | ${t.enabled ? 'enabled' : 'disabled'} | Role: ${t.agent_role}\n  Last run: ${t.last_run ? new Date(t.last_run * 1000).toLocaleString('en-US', { timeZone: tz }) : 'never'}\n  Prompt: ${t.prompt.slice(0, 200)}${t.prompt.length > 200 ? '...' : ''}`
         )
-        return { content: [{ type: 'text', text: lines.join('\n\n') }] }
+        return { content: [{ type: 'text', text: `All times are LOCAL (${tz}). Do NOT convert to UTC.\n\n${lines.join('\n\n')}` }] }
       }
 
       case 'update_scheduled_task': {
