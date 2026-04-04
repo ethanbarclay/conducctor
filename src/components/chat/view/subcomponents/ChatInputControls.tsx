@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PermissionMode, Provider } from '../../types/types';
+import { useAuth } from '../../../../contexts/AuthContext';
 import ThinkingModeSelector from './ThinkingModeSelector';
 import TokenUsagePie from './TokenUsagePie';
 
@@ -11,6 +12,7 @@ interface ChatInputControlsProps {
   thinkingMode: string;
   setThinkingMode: React.Dispatch<React.SetStateAction<string>>;
   tokenBudget: { used?: number; total?: number } | null;
+  sessionId: string | null;
   slashCommandsCount: number;
   onToggleCommandMenu: () => void;
   hasInput: boolean;
@@ -27,6 +29,7 @@ export default function ChatInputControls({
   thinkingMode,
   setThinkingMode,
   tokenBudget,
+  sessionId,
   slashCommandsCount,
   onToggleCommandMenu,
   hasInput,
@@ -36,6 +39,38 @@ export default function ChatInputControls({
   onScrollToBottom,
 }: ChatInputControlsProps) {
   const { t } = useTranslation('chat');
+  const { token } = useAuth();
+  const [contextAction, setContextAction] = useState<string | null>(null);
+
+  const handleContextAction = useCallback(async (action: 'compact' | 'fork' | 'checkpoint') => {
+    if (!sessionId || !token || contextAction) return;
+    setContextAction(action);
+    try {
+      // Find the conductor agent for this session
+      const agentsRes = await fetch('/api/conductor/agents', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const { agents } = await agentsRes.json();
+      const agent = agents?.find((a: { sessionId?: string; agentId?: string }) =>
+        a.sessionId === sessionId || a.agentId === sessionId
+      );
+      if (!agent) {
+        setContextAction(null);
+        return;
+      }
+      await fetch(`/api/conductor/agents/${agent.agentId}/${action}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(action === 'checkpoint' ? { label: `manual-${Date.now()}` } : {}),
+      });
+    } catch (err) {
+      console.error(`Context action ${action} failed:`, err);
+    }
+    setTimeout(() => setContextAction(null), 1500);
+  }, [sessionId, token, contextAction]);
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
@@ -79,6 +114,38 @@ export default function ChatInputControls({
       )}
 
       <TokenUsagePie used={tokenBudget?.used || 0} total={tokenBudget?.total || parseInt(import.meta.env.VITE_CONTEXT_WINDOW) || 160000} />
+
+      {sessionId && (
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => handleContextAction('compact')}
+            disabled={!!contextAction}
+            className="rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
+            title="Compact context — summarize and free up token budget"
+          >
+            {contextAction === 'compact' ? '...' : '⚡'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleContextAction('fork')}
+            disabled={!!contextAction}
+            className="rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
+            title="Fork session — create a branch to explore a different direction"
+          >
+            {contextAction === 'fork' ? '...' : '🔀'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleContextAction('checkpoint')}
+            disabled={!!contextAction}
+            className="rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
+            title="Checkpoint — save session state to restore later"
+          >
+            {contextAction === 'checkpoint' ? '...' : '💾'}
+          </button>
+        </div>
+      )}
 
       <button
         type="button"

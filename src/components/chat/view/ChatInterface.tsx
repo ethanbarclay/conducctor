@@ -354,6 +354,7 @@ function ChatInterface({
           thinkingMode={thinkingMode}
           setThinkingMode={setThinkingMode}
           tokenBudget={tokenBudget}
+          sessionId={selectedSession?.id || null}
           slashCommandsCount={slashCommandsCount}
           onToggleCommandMenu={handleToggleCommandMenu}
           hasInput={Boolean(input.trim())}
