@@ -135,18 +135,27 @@ export class ProcessManager extends EventEmitter {
         args.push('--dangerously-skip-permissions')
       }
 
-      // Allowed/disallowed tools
-      if (agent.allowedTools?.length) {
-        args.push('--allowedTools', ...agent.allowedTools)
-      }
-      if (agent.disallowedTools?.length) {
-        args.push('--disallowedTools', ...agent.disallowedTools)
-      }
-
       // MCP config for inter-agent communication
       const mcpConfigJson = this._buildMCPConfigArg(agentId)
       if (mcpConfigJson) {
         args.push('--mcp-config', mcpConfigJson)
+      }
+
+      // Allowed/disallowed tools — always include conductor MCP tools
+      const conductorTools = [
+        'mcp__conductor__send_message',
+        'mcp__conductor__read_messages',
+        'mcp__conductor__list_agents',
+        'mcp__conductor__get_shared_state',
+        'mcp__conductor__set_shared_state',
+        'mcp__conductor__request_review',
+        'mcp__conductor__spawn_agent',
+      ]
+      const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
+      args.push('--allowedTools', ...allAllowed)
+
+      if (agent.disallowedTools?.length) {
+        args.push('--disallowedTools', ...agent.disallowedTools)
       }
 
       if (sessionId) {
