@@ -158,27 +158,6 @@ npm start            # Serves on port 3001
 docker build -t conductor-agent:latest -f docker/Dockerfile.agent .
 ```
 
-## Architecture
-
-```
-Browser (Desktop / Mobile)
-    |
-    WebSocket + REST
-    |
-Backend (Node.js + Express)
-+-- Process Manager        spawn/kill/monitor CC subprocesses
-+-- MCP Broker (port 3101) inter-agent messaging via stdio bridge
-+-- Context Monitor        token tracking, auto-compact, fork/checkpoint
-+-- Scheduler              cron-based task runner (node-cron)
-+-- Container Manager      Docker isolation per agent
-+-- Hooks Receiver         CC hook events -> DB + WebSocket
-    |
-CC Instances (Docker containers)
-    --output-format stream-json
-    --mcp-config { stdio bridge -> HTTP broker }
-    --settings { hook relay }
-```
-
 ## UI Tabs
 
 | Tab | Icon | Description |
