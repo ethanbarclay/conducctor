@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from 'events'
+import cron from 'node-cron'
 
 export class Scheduler extends EventEmitter {
   constructor({ db, processManager }) {
@@ -54,8 +55,8 @@ export class Scheduler extends EventEmitter {
   }
 
   stop() {
-    for (const handle of this.jobs.values()) {
-      clearInterval(handle)
+    for (const job of this.jobs.values()) {
+      job.stop()
     }
     this.jobs.clear()
   }
@@ -100,22 +101,22 @@ export class Scheduler extends EventEmitter {
   // ─── Private ─────────────────────────────────────────────────────────────────
 
   _schedule(task) {
-    // TODO: Replace with proper cron parser (e.g. node-cron)
-    // For now uses a simple interval-based approximation
-    const intervalMs = this._cronToMs(task.cron_expression)
-    if (!intervalMs) {
-      console.warn(`[Scheduler] Could not parse cron: ${task.cron_expression}`)
+    if (!cron.validate(task.cron_expression)) {
+      console.warn(`[Scheduler] Invalid cron expression: ${task.cron_expression}`)
       return
     }
 
-    const handle = setInterval(() => this._runTask(task.id), intervalMs)
-    this.jobs.set(task.id, handle)
+    const job = cron.schedule(task.cron_expression, () => this._runTask(task.id), {
+      scheduled: true,
+    })
+    this.jobs.set(task.id, job)
+    console.log(`[Scheduler] Scheduled "${task.name}" with cron: ${task.cron_expression}`)
   }
 
   _unschedule(taskId) {
-    const handle = this.jobs.get(taskId)
-    if (handle) {
-      clearInterval(handle)
+    const job = this.jobs.get(taskId)
+    if (job) {
+      job.stop()
       this.jobs.delete(taskId)
     }
   }
@@ -147,8 +148,8 @@ export class Scheduler extends EventEmitter {
         'UPDATE scheduled_tasks SET last_run = unixepoch() WHERE id = ?'
       ).run(taskId)
 
-      // Listen for exit to mark run complete
-      this.processManager.once(`agent:exit`, ({ agentId: exitedId, code }) => {
+      // Listen for turn completion to mark run complete
+      this.processManager.once('agent:turn_complete', ({ agentId: exitedId, code }) => {
         if (exitedId === agentId) {
           this.db.prepare(
             'UPDATE task_runs SET ended_at = unixepoch(), status = ? WHERE id = ?'
@@ -164,14 +165,4 @@ export class Scheduler extends EventEmitter {
     }
   }
 
-  // Minimal cron-to-ms: handles "*/N * * * *" (every N minutes) only for now
-  // Replace with node-cron for full cron support
-  _cronToMs(expr) {
-    const match = expr.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/)
-    if (match) return parseInt(match[1]) * 60 * 1000
-    // Daily at specific hour: "0 N * * *"
-    const daily = expr.match(/^0\s+(\d+)\s+\*\s+\*\s+\*$/)
-    if (daily) return 24 * 60 * 60 * 1000
-    return null
-  }
 }
