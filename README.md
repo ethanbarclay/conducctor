@@ -64,32 +64,29 @@ Every agent gets access to:
 
 ```mermaid
 graph TB
-    subgraph Browser["Browser (Desktop / Mobile)"]
-        UI[Conducctor UI]
-        subgraph Tabs["Tab Bar"]
-            Chat[Chat]
-            Shell[Shell]
-            Files[Files]
-            Git[Source Control]
-            Agents[Agents]
-            Observe[Observe]
-            Scheduler[Scheduler]
+    subgraph Browser["🖥️ Browser"]
+        UI["Conducctor UI"]
+        subgraph Tabs[" "]
+            Chat["💬 Chat"]
+            Shell["⌨️ Shell"]
+            Agents["🤖 Agents"]
+            Observe["👁️ Observe"]
+            Scheduler["⏰ Scheduler"]
         end
     end
 
-    UI <-->|"WebSocket /ws"| Server
-    UI <-->|"WebSocket /conductor-ws"| Server
-    UI -->|"REST /api/conductor/*"| Server
+    UI <-->|"WebSocket"| Server
+    UI -->|"REST API"| Server
 
-    subgraph Server["Conducctor Server · Node.js + Express"]
-        PM[Process Manager]
-        CM[Container Manager]
-        CM2[Context Monitor]
-        MCPBroker["MCP Broker :3101"]
-        Sched["Scheduler · node-cron"]
-        Hooks[Hooks Receiver]
-        Bridge["Conductor Bridge · stream-json → UI"]
-        DB[("SQLite · agents, messages, checkpoints, tasks")]
+    subgraph Server["⚡ Conducctor Server"]
+        PM["Process Manager"]
+        CM["Container Manager"]
+        CM2["Context Monitor"]
+        MCPBroker["MCP Broker :3101<br/>12 tools"]
+        Sched["Scheduler<br/>node-cron"]
+        Hooks["Hooks Receiver"]
+        Bridge["Stream Bridge<br/>stream-json → UI"]
+        DB[("SQLite<br/>agents · messages<br/>checkpoints · tasks")]
     end
 
     PM --> CM
@@ -97,55 +94,44 @@ graph TB
     PM <--> MCPBroker
     Sched --> PM
     Hooks --> DB
-    CM2 --> DB
     MCPBroker --> DB
 
-    subgraph Docker["Docker Containers"]
-        subgraph Agent1["Agent Container"]
-            CC1["claude CLI · stream-json + mcp-config"]
-            StdioBridge1[MCP Stdio Bridge]
-            HookRelay1[Hook Relay Script]
-            CC1 <-->|"stdio JSON-RPC"| StdioBridge1
-            CC1 -->|"hook stdin/stdout"| HookRelay1
+    subgraph Docker["🐳 Docker · Per-Agent Container"]
+        CC["claude CLI<br/>--output-format stream-json<br/>--mcp-config conductor"]
+        StdioBridge["MCP Stdio Bridge<br/>JSON-RPC → HTTP"]
+        HookRelay["Hook Relay<br/>stdin → POST"]
 
-            subgraph CC1Sub["CC Built-in Subagents"]
-                Sub1A[Explore]
-                Sub1B[Plan]
-                Sub1C[general-purpose]
-            end
-            CC1 --> Sub1A
-            CC1 --> Sub1B
-            CC1 --> Sub1C
+        CC <-->|"stdio"| StdioBridge
+        CC -->|"hooks"| HookRelay
+
+        subgraph Subagents["CC Built-in Subagents"]
+            Sub1["🔍 Explore"]
+            Sub2["📋 Plan"]
+            Sub3["🛠️ general-purpose"]
         end
-
-        subgraph Agent2["Agent Container"]
-            CC2[claude CLI]
-            StdioBridge2[MCP Stdio Bridge]
-            HookRelay2[Hook Relay Script]
-            CC2 <-->|"stdio JSON-RPC"| StdioBridge2
-            CC2 -->|"hook stdin/stdout"| HookRelay2
-
-            subgraph CC2Sub["CC Built-in Subagents"]
-                Sub2A[Explore]
-            end
-            CC2 --> Sub2A
-        end
+        CC --> Sub1
+        CC --> Sub2
+        CC --> Sub3
     end
 
-    CM -->|"docker run"| Agent1
-    CM -->|"docker run"| Agent2
-
-    StdioBridge1 -->|"HTTP POST"| MCPBroker
-    StdioBridge2 -->|"HTTP POST"| MCPBroker
-    HookRelay1 -->|"HTTP POST"| Hooks
-    HookRelay2 -->|"HTTP POST"| Hooks
-
-    CC1 -->|"stream-json stdout"| PM
-    CC2 -->|"stream-json stdout"| PM
+    CM -->|"docker run"| Docker
+    StdioBridge -->|"HTTP POST"| MCPBroker
+    HookRelay -->|"HTTP POST"| Hooks
+    CC -->|"stream-json"| PM
     PM --> Bridge
-    Bridge -->|"NormalizedMessage"| UI
+    Bridge -->|"events"| UI
 
-    MCPBroker <-.->|"send_message · read_messages · spawn_agent"| MCPBroker
+    MCPBroker <-.->|"send_message · spawn_agent<br/>read_messages · schedule_task"| MCPBroker
+
+    style Browser fill:#0f172a,stroke:#22d3ee,stroke-width:2px,color:#e2e8f0
+    style Server fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#e2e8f0
+    style Docker fill:#1a1a2e,stroke:#a855f7,stroke-width:2px,color:#e2e8f0
+    style Tabs fill:#0f172a,stroke:#22d3ee,stroke-width:1px,color:#e2e8f0
+    style Subagents fill:#1a1a2e,stroke:#a855f7,stroke-width:1px,color:#c4b5fd,stroke-dasharray:4
+    style DB fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#fbbf24
+    style MCPBroker fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#6ee7b7
+    style CC fill:#2d1b69,stroke:#a855f7,stroke-width:2px,color:#e2e8f0
+    style UI fill:#0c4a6e,stroke:#22d3ee,stroke-width:2px,color:#e2e8f0
 ```
 
 ## Quick Start
