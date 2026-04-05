@@ -47,6 +47,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
 
   // Set up event listeners BEFORE spawning so we catch everything
   let realSessionId = sessionId || null;
+  let lastGeminiContent = ''; // Track accumulated Gemini delta
 
   const eventHandler = ({ agentId: eid, event }) => {
     // We listen to all events and filter by our agentId below
@@ -147,13 +148,31 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     // ── Gemini: message events (type: "message" with role)
     if (event.type === 'message') {
       if (event.role === 'assistant' && event.content) {
-        writer.send(createNormalizedMessage({
-          kind: event.delta ? 'stream_delta' : 'text',
-          role: 'assistant',
-          content: event.content,
-          sessionId: realSessionId || sid,
-          provider: PROVIDER,
-        }));
+        if (event.delta) {
+          // Gemini delta messages contain the FULL accumulated text.
+          // Extract only the new portion to avoid duplicates.
+          const fullContent = event.content;
+          const newContent = fullContent.startsWith(lastGeminiContent)
+            ? fullContent.slice(lastGeminiContent.length)
+            : fullContent;
+          lastGeminiContent = fullContent;
+          if (newContent) {
+            writer.send(createNormalizedMessage({
+              kind: 'stream_delta',
+              content: newContent,
+              sessionId: realSessionId || sid,
+              provider: PROVIDER,
+            }));
+          }
+        } else {
+          writer.send(createNormalizedMessage({
+            kind: 'text',
+            role: 'assistant',
+            content: event.content,
+            sessionId: realSessionId || sid,
+            provider: PROVIDER,
+          }));
+        }
       }
       // Skip user message echo
       return;
@@ -236,6 +255,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     const bridge = activeBridges.get(eid);
     if (!bridge || bridge.writer !== writer) return;
     console.log(`[Conductor Bridge] TURN COMPLETE agentId=${eid} code=${code}`);
+    lastGeminiContent = ''; // Reset delta tracker for next turn
     writer.send(createNormalizedMessage({
       kind: 'complete',
       exitCode: code,

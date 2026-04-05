@@ -241,7 +241,10 @@ export class ProcessManager extends EventEmitter {
         })
 
         childProc.stderr.on('data', (chunk) => {
-          this.emit('agent:error', { agentId, error: chunk.toString() })
+          const text = chunk.toString()
+          // Filter out noisy startup messages from Gemini CLI
+          if (text.includes('YOLO mode') || text.includes('STARTUP') || text.includes('cleanup_ops') || text.includes('Skipping metrics')) return
+          this.emit('agent:error', { agentId, error: text })
         })
 
         childProc.on('exit', (code) => {
