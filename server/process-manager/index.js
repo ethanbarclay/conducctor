@@ -154,6 +154,12 @@ export class ProcessManager extends EventEmitter {
       // MangoCode provider flag (e.g. google-vertex)
       if (isMango) {
         args.push('--provider', agent.mangoProvider || 'google-vertex')
+        // Ensure Vertex env vars are set for the process
+        if (!process.env.CLAURST_VERTEX_PROJECT_ID) {
+          process.env.CLAURST_VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'projectpee'
+          process.env.CLAURST_VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'us-central1'
+          process.env.CLAURST_VERTEX_AUTH_MODE = 'gcloud'
+        }
       }
 
       // Model
@@ -327,9 +333,15 @@ export class ProcessManager extends EventEmitter {
   }
 
   _spawnLocal(args, binary = 'claude') {
+    const env = { ...process.env }
+    // Ensure gcloud is in PATH for MangoCode Vertex auth
+    if (binary === 'mangocode' && !env.PATH?.includes('google-cloud-sdk')) {
+      const home = env.HOME || '/home/ethan'
+      env.PATH = `${home}/google-cloud-sdk/bin:${env.PATH}`
+    }
     return spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env,
     })
   }
 

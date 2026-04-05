@@ -145,6 +145,17 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
+    // ── MangoCode: text_delta events
+    if (event.type === 'text_delta' && event.text) {
+      writer.send(createNormalizedMessage({
+        kind: 'stream_delta',
+        content: event.text,
+        sessionId: realSessionId || sid,
+        provider: PROVIDER,
+      }));
+      return;
+    }
+
     // ── Gemini: message events (type: "message" with role)
     if (event.type === 'message') {
       if (event.role === 'assistant' && event.content) {
