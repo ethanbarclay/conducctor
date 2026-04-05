@@ -39,6 +39,7 @@ export class ProcessManager extends EventEmitter {
       projectId: opts.projectId,
       role: opts.role || 'agent',
       provider: opts.provider || 'claude',
+      mangoProvider: opts.mangoProvider || 'google-vertex',
       model: opts.model || null,
       useContainer: !!opts.useContainer,
       permissionMode: opts.permissionMode || null,
@@ -149,6 +150,11 @@ export class ProcessManager extends EventEmitter {
       const args = ['--output-format', 'stream-json']
 
       if (!isGemini) args.push('--verbose')
+
+      // MangoCode provider flag (e.g. google-vertex)
+      if (isMango) {
+        args.push('--provider', agent.mangoProvider || 'google-vertex')
+      }
 
       // Model
       if (agent.model) {

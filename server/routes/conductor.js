@@ -27,7 +27,7 @@ function getConductor(req) {
 router.post('/agents', async (req, res) => {
     try {
         const { processManager, mcpBroker, contextMonitor } = getConductor(req);
-        const { prompt, projectPath, sessionId, useContainer, role, provider, model, permissionMode, autoCompactThreshold } = req.body;
+        const { prompt, projectPath, sessionId, useContainer, role, provider, mangoProvider, model, permissionMode, autoCompactThreshold } = req.body;
 
         if (!prompt && !sessionId) {
             return res.status(400).json({ error: 'prompt or sessionId is required' });
@@ -46,6 +46,7 @@ router.post('/agents', async (req, res) => {
             useContainer: !!useContainer,
             role: role || 'agent',
             provider: provider || 'claude',
+            mangoProvider: mangoProvider || undefined,
             model: model || undefined,
             permissionMode: permissionMode || undefined,
         }).catch(err => {

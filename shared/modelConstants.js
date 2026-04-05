@@ -96,10 +96,12 @@ export const GEMINI_MODELS = {
  */
 export const MANGOCODE_MODELS = {
   OPTIONS: [
-    { value: "sonnet", label: "Sonnet" },
-    { value: "opus", label: "Opus" },
-    { value: "haiku", label: "Haiku" },
+    { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
+    { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet" },
+    { value: "anthropic/claude-opus-4-6", label: "Claude Opus" },
   ],
 
-  DEFAULT: "sonnet",
+  DEFAULT: "google/gemini-3.1-pro-preview",
 };
