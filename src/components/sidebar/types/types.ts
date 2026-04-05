@@ -38,6 +38,8 @@ export type SidebarProps = {
   settingsInitialTab: string;
   onCloseSettings: () => void;
   isMobile: boolean;
+  activeTab?: import('../../../types/app').AppTab;
+  onNavigate?: (tab: import('../../../types/app').AppTab) => void;
 };
 
 export type SessionViewModel = {

@@ -35,6 +35,8 @@ function Sidebar({
   settingsInitialTab,
   onCloseSettings,
   isMobile,
+  activeTab,
+  onNavigate,
 }: SidebarProps) {
   const { t } = useTranslation(['sidebar', 'common']);
   const { isPWA } = useDeviceSettings({ trackMobile: false });
@@ -214,6 +216,8 @@ function Sidebar({
           onShowSettings={onShowSettings}
           updateAvailable={updateAvailable}
           onShowVersionModal={() => setShowVersionModal(true)}
+          activeTab={activeTab}
+          onNavigate={onNavigate}
           t={t}
         />
       ) : (
@@ -268,6 +272,8 @@ function Sidebar({
             latestVersion={latestVersion}
             onShowVersionModal={() => setShowVersionModal(true)}
             onShowSettings={onShowSettings}
+            activeTab={activeTab}
+            onNavigate={onNavigate}
             projectListProps={projectListProps}
             t={t}
           />

@@ -94,6 +94,24 @@ function MainContent({
     return <MainContentStateView mode="loading" isMobile={isMobile} onMenuClick={onMenuClick} />;
   }
 
+  // Global views (agents, observe, scheduler) work without a project
+  if (!selectedProject) {
+    if (activeTab === 'agents' || activeTab === 'observability' || activeTab === 'scheduler') {
+      return (
+        <div className="flex h-full flex-col">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 min-w-[200px] flex-col overflow-hidden flex-1">
+              <OrchestrationPanel isVisible={activeTab === 'agents'} />
+              <ObservabilityPanel isVisible={activeTab === 'observability'} />
+              <SchedulerPanel isVisible={activeTab === 'scheduler'} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <MainContentStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />;
+  }
+
   return (
     <div className="flex h-full flex-col">
       <MainContentHeader
@@ -108,11 +126,6 @@ function MainContent({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className={`flex min-h-0 min-w-[200px] flex-col overflow-hidden ${editorExpanded ? 'hidden' : ''} flex-1`}>
-
-          {/* Show empty state for project-dependent tabs when no project selected */}
-          {!selectedProject && (activeTab === 'chat' || activeTab === 'shell' || activeTab === 'files' || activeTab === 'git' || activeTab === 'tasks') && (
-            <MainContentStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />
-          )}
 
           {selectedProject && (
             <div className={`h-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>

@@ -1,4 +1,4 @@
-import { MessageSquare, Terminal, Folder, GitBranch, ClipboardCheck, Cpu, Clock, Eye, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Terminal, Folder, GitBranch, ClipboardCheck, type LucideIcon } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tooltip, PillBar, Pill } from '../../../../shared/view/ui';
@@ -10,7 +10,6 @@ type MainContentTabSwitcherProps = {
   activeTab: AppTab;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   shouldShowTasksTab: boolean;
-  hasProject: boolean;
 };
 
 type BuiltInTab = {
@@ -18,7 +17,6 @@ type BuiltInTab = {
   id: AppTab;
   labelKey: string;
   icon: LucideIcon;
-  requiresProject?: boolean;
 };
 
 type PluginTab = {
@@ -27,22 +25,15 @@ type PluginTab = {
   label: string;
   pluginName: string;
   iconFile: string;
-  requiresProject?: boolean;
 };
 
 type TabDefinition = BuiltInTab | PluginTab;
 
-const PROJECT_TABS: BuiltInTab[] = [
-  { kind: 'builtin', id: 'chat',  labelKey: 'tabs.chat',  icon: MessageSquare, requiresProject: true },
-  { kind: 'builtin', id: 'shell', labelKey: 'tabs.shell', icon: Terminal, requiresProject: true },
-  { kind: 'builtin', id: 'files', labelKey: 'tabs.files', icon: Folder, requiresProject: true },
-  { kind: 'builtin', id: 'git',   labelKey: 'tabs.git',   icon: GitBranch, requiresProject: true },
-];
-
-const GLOBAL_TABS: BuiltInTab[] = [
-  { kind: 'builtin', id: 'agents',        labelKey: 'tabs.agents',        icon: Cpu },
-  { kind: 'builtin', id: 'observability', labelKey: 'tabs.observability', icon: Eye },
-  { kind: 'builtin', id: 'scheduler',     labelKey: 'tabs.scheduler',     icon: Clock },
+const BASE_TABS: BuiltInTab[] = [
+  { kind: 'builtin', id: 'chat',  labelKey: 'tabs.chat',  icon: MessageSquare },
+  { kind: 'builtin', id: 'shell', labelKey: 'tabs.shell', icon: Terminal },
+  { kind: 'builtin', id: 'files', labelKey: 'tabs.files', icon: Folder },
+  { kind: 'builtin', id: 'git',   labelKey: 'tabs.git',   icon: GitBranch },
 ];
 
 const TASKS_TAB: BuiltInTab = {
@@ -50,23 +41,17 @@ const TASKS_TAB: BuiltInTab = {
   id: 'tasks',
   labelKey: 'tabs.tasks',
   icon: ClipboardCheck,
-  requiresProject: true,
 };
 
 export default function MainContentTabSwitcher({
   activeTab,
   setActiveTab,
   shouldShowTasksTab,
-  hasProject,
 }: MainContentTabSwitcherProps) {
   const { t } = useTranslation();
   const { plugins } = usePlugins();
 
-  const builtInTabs: BuiltInTab[] = [
-    ...PROJECT_TABS,
-    ...GLOBAL_TABS,
-    ...(shouldShowTasksTab ? [TASKS_TAB] : []),
-  ];
+  const builtInTabs: BuiltInTab[] = shouldShowTasksTab ? [...BASE_TABS, TASKS_TAB] : BASE_TABS;
 
   const pluginTabs: PluginTab[] = plugins
     .filter((p) => p.enabled)
@@ -76,7 +61,6 @@ export default function MainContentTabSwitcher({
       label: p.displayName,
       pluginName: p.name,
       iconFile: p.icon,
-      requiresProject: true,
     }));
 
   const tabs: TabDefinition[] = [...builtInTabs, ...pluginTabs];
@@ -85,15 +69,14 @@ export default function MainContentTabSwitcher({
     <PillBar>
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab;
-        const isDisabled = !hasProject && tab.requiresProject;
         const displayLabel = tab.kind === 'builtin' ? t(tab.labelKey) : tab.label;
 
         return (
-          <Tooltip key={tab.id} content={isDisabled ? `${displayLabel} (select a project)` : displayLabel} position="bottom">
+          <Tooltip key={tab.id} content={displayLabel} position="bottom">
             <Pill
               isActive={isActive}
-              onClick={() => !isDisabled && setActiveTab(tab.id)}
-              className={`px-2.5 py-[5px] ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              className="px-2.5 py-[5px]"
             >
               {tab.kind === 'builtin' ? (
                 <tab.icon className="h-3.5 w-3.5" strokeWidth={isActive ? 2.2 : 1.8} />

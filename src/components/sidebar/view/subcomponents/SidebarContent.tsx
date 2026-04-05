@@ -64,6 +64,8 @@ type SidebarContentProps = {
   latestVersion: string | null;
   onShowVersionModal: () => void;
   onShowSettings: () => void;
+  activeTab?: import('../../../../types/app').AppTab;
+  onNavigate?: (tab: import('../../../../types/app').AppTab) => void;
   projectListProps: SidebarProjectListProps;
   t: TFunction;
 };
@@ -91,6 +93,8 @@ export default function SidebarContent({
   latestVersion,
   onShowVersionModal,
   onShowSettings,
+  activeTab,
+  onNavigate,
   projectListProps,
   t,
 }: SidebarContentProps) {
@@ -375,6 +379,8 @@ export default function SidebarContent({
         latestVersion={latestVersion}
         onShowVersionModal={onShowVersionModal}
         onShowSettings={onShowSettings}
+        activeTab={activeTab}
+        onNavigate={onNavigate}
         t={t}
       />
     </div>

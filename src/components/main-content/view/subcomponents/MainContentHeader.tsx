@@ -59,7 +59,6 @@ export default function MainContentHeader({
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               shouldShowTasksTab={shouldShowTasksTab}
-              hasProject={!!selectedProject}
             />
           </div>
           {canScrollRight && (
