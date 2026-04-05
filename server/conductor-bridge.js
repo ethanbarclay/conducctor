@@ -147,27 +147,15 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
-    // ── MangoCode: text_delta events (no init event — send session_created on first event)
+    // ── Legacy MangoCode text_delta (kept for older versions)
     if (event.type === 'text_delta' && event.text) {
       if (!realSessionId) {
         realSessionId = eid;
         processManager.setSessionId(eid, realSessionId);
-        if (writer.setSessionId) {
-          writer.setSessionId(realSessionId);
-        }
-        writer.send(createNormalizedMessage({
-          kind: 'session_created',
-          newSessionId: realSessionId,
-          sessionId: realSessionId,
-          provider: PROVIDER,
-        }));
+        if (writer.setSessionId) writer.setSessionId(realSessionId);
+        writer.send(createNormalizedMessage({ kind: 'session_created', newSessionId: realSessionId, sessionId: realSessionId, provider: PROVIDER }));
       }
-      writer.send(createNormalizedMessage({
-        kind: 'stream_delta',
-        content: event.text,
-        sessionId: realSessionId || sid,
-        provider: PROVIDER,
-      }));
+      writer.send(createNormalizedMessage({ kind: 'stream_delta', content: event.text, sessionId: realSessionId || sid, provider: PROVIDER }));
       return;
     }
 
