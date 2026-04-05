@@ -639,7 +639,8 @@ export function useChatComposerState({
           },
         });
       } else if (provider === 'mangocode') {
-        // MangoCode uses the same flags as Claude — route through claude-command with provider override
+        // MangoCode via Vertex — use Gemini model, not Claude model
+        const mangoModel = localStorage.getItem('mangocode-model') || 'google/gemini-2.5-pro';
         sendMessage({
           type: 'claude-command',
           command: messageContent,
@@ -650,10 +651,10 @@ export function useChatComposerState({
             resume: Boolean(effectiveSessionId),
             toolsSettings,
             permissionMode,
-            model: claudeModel,
+            model: mangoModel,
             sessionSummary,
             images: uploadedImages,
-            useContainer: toolsSettings?.containerIsolation !== false,
+            useContainer: false, // MangoCode runs locally (no Docker image yet)
             provider: 'mangocode',
           },
         });

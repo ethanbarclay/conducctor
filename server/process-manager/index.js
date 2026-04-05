@@ -171,7 +171,7 @@ export class ProcessManager extends EventEmitter {
         // Gemini-specific flags
         args.push('--yolo') // auto-approve all tools
       } else {
-        // Claude-specific flags
+        // Claude + MangoCode shared flags
         if (agent.permissionMode) {
           args.push('--permission-mode', agent.permissionMode)
         }
@@ -179,10 +179,12 @@ export class ProcessManager extends EventEmitter {
           args.push('--dangerously-skip-permissions')
         }
 
-        // Hook settings for observability (Claude only)
-        const hookSettings = this._buildHookSettings(agent)
-        if (hookSettings) {
-          args.push('--settings', hookSettings)
+        // Hook settings for observability (Claude only — MangoCode doesn't support --settings)
+        if (!isMango) {
+          const hookSettings = this._buildHookSettings(agent)
+          if (hookSettings) {
+            args.push('--settings', hookSettings)
+          }
         }
 
         // Allowed tools (Claude only — Gemini uses --yolo)
@@ -204,17 +206,19 @@ export class ProcessManager extends EventEmitter {
           'NotebookEdit', 'TodoWrite',
         ]
         const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
-        args.push('--allowedTools', ...allAllowed)
+        const allowFlag = isMango ? '--allowed-tools' : '--allowedTools'
+        args.push(allowFlag, ...allAllowed)
 
         // Disallow built-in tools that conflict with conductor equivalents
         const conductorDisallowed = [
-          'RemoteTrigger',  // Use mcp__conductor__schedule_task instead
-          'CronCreate',     // Use mcp__conductor__schedule_task instead
-          'CronDelete',     // Use mcp__conductor__delete_scheduled_task instead
-          'CronList',       // Use mcp__conductor__list_scheduled_tasks instead
+          'RemoteTrigger',
+          'CronCreate',
+          'CronDelete',
+          'CronList',
         ]
         const allDisallowed = [...(agent.disallowedTools || []), ...conductorDisallowed]
-        args.push('--disallowedTools', ...allDisallowed)
+        const disallowFlag = isMango ? '--disallowed-tools' : '--disallowedTools'
+        args.push(disallowFlag, ...allDisallowed)
       }
 
       // System prompt to orient agents toward conductor tools
