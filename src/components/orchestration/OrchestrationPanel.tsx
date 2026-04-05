@@ -6,7 +6,7 @@
  * and wires up all agent lifecycle actions to the REST API.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AgentGrid } from './AgentGrid';
 import { MessageBus } from './MessageBus';
@@ -36,9 +36,32 @@ async function conductorFetch(path: string, token: string, options: RequestInit 
   return res.json();
 }
 
+interface ProjectOption {
+  name: string;
+  displayName: string;
+  fullPath: string;
+}
+
 export default function OrchestrationPanel({ isVisible, selectedProjectPath = '' }: { isVisible: boolean; selectedProjectPath?: string }) {
   const { token } = useAuth();
   const { agents, messages, agentEvents, isConnected, addAgent } = useConductorWebSocket();
+
+  // Fetch projects for the dropdown
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  useEffect(() => {
+    if (!isVisible || !token) return;
+    fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const list = (data.projects || data || []) as Array<{ name: string; displayName?: string; fullPath?: string; path?: string }>;
+        setProjects(list.map(p => ({
+          name: p.name,
+          displayName: p.displayName || p.name,
+          fullPath: p.fullPath || p.path || '',
+        })));
+      })
+      .catch(() => {});
+  }, [isVisible, token]);
 
   const [spawnDialog, setSpawnDialog] = useState<SpawnDialogState>({
     open: false,
@@ -201,16 +224,21 @@ export default function OrchestrationPanel({ isVisible, selectedProjectPath = ''
               className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
               disabled={spawnDialog.spawning}
             />
-            <input
-              type="text"
+            <select
               value={spawnDialog.projectPath}
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, projectPath: e.target.value }))}
-              placeholder="Project path (required)"
               className={`text-xs px-3 py-2 bg-muted border rounded-md outline-none focus:ring-1 focus:ring-primary ${
                 !spawnDialog.projectPath.trim() ? 'border-red-500/50' : 'border-border'
               }`}
               disabled={spawnDialog.spawning}
-            />
+            >
+              <option value="">Select workspace...</option>
+              {projects.map((p) => (
+                <option key={p.name} value={p.fullPath}>
+                  {p.displayName} — {p.fullPath}
+                </option>
+              ))}
+            </select>
             <select
               value={spawnDialog.provider}
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, provider: e.target.value }))}
