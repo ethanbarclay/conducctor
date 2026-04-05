@@ -144,7 +144,8 @@ export class ProcessManager extends EventEmitter {
       agent.busy = true
 
       const isGemini = agent.provider === 'gemini'
-      const cliBinary = isGemini ? 'gemini' : 'claude'
+      const isMango = agent.provider === 'mangocode'
+      const cliBinary = isGemini ? 'gemini' : isMango ? 'mangocode' : 'claude'
       const args = ['--output-format', 'stream-json']
 
       if (!isGemini) args.push('--verbose')

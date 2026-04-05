@@ -247,6 +247,7 @@ export default function OrchestrationPanel({ isVisible, selectedProjectPath = ''
             >
               <option value="claude">Claude Code</option>
               <option value="gemini">Gemini CLI</option>
+              <option value="mangocode">MangoCode (Rust)</option>
             </select>
             <select
               value={spawnDialog.model}
@@ -267,6 +268,7 @@ export default function OrchestrationPanel({ isVisible, selectedProjectPath = ''
                   <option value="haiku">Haiku (cheap)</option>
                 </>
               )}
+              {/* MangoCode supports same models as Claude since it's multi-provider */}
             </select>
             <select
               value={spawnDialog.permissionMode}

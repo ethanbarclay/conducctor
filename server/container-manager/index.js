@@ -42,7 +42,8 @@ export class ContainerManager extends EventEmitter {
     const home = homedir()
     const provider = opts.provider || 'claude'
     const isGemini = provider === 'gemini'
-    const containerImage = isGemini ? 'conductor-gemini:latest' : image
+    const isMango = provider === 'mangocode'
+    const containerImage = isGemini ? 'conductor-gemini:latest' : isMango ? 'conductor-mangocode:latest' : image
     // Run container as host user so session files have correct ownership
     const uid = process.getuid?.() ?? 1000
     const gid = process.getgid?.() ?? 1000
@@ -64,6 +65,7 @@ export class ContainerManager extends EventEmitter {
       ...(isGemini ? [
         '-v', `${home}/.gemini:${home}/.gemini:rw`,
       ] : [
+        // Claude and MangoCode share the same config paths
         '-v', `${home}/.claude:${home}/.claude:rw`,
         '-v', `${home}/.claude.json:${home}/.claude.json:rw`,
       ]),
