@@ -1,4 +1,4 @@
-export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini';
+export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'mangocode';
 
 export type AppTab = 'chat' | 'files' | 'shell' | 'git' | 'tasks' | 'agents' | 'scheduler' | 'observability' | 'preview' | `plugin:${string}`;
 

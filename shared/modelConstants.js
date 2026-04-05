@@ -90,3 +90,16 @@ export const GEMINI_MODELS = {
 
   DEFAULT: "gemini-2.5-flash",
 };
+
+/**
+ * MangoCode Models (same as Claude — Rust CC reimplementation)
+ */
+export const MANGOCODE_MODELS = {
+  OPTIONS: [
+    { value: "sonnet", label: "Sonnet" },
+    { value: "opus", label: "Opus" },
+    { value: "haiku", label: "Haiku" },
+  ],
+
+  DEFAULT: "sonnet",
+};

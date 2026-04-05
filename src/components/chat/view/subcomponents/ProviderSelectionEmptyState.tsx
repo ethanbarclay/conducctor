@@ -7,6 +7,7 @@ import {
   CURSOR_MODELS,
   CODEX_MODELS,
   GEMINI_MODELS,
+  MANGOCODE_MODELS,
 } from "../../../../../shared/modelConstants";
 import type { ProjectSession, SessionProvider } from "../../../../types/app";
 import { NextTaskBanner } from "../../../task-master";
@@ -73,12 +74,21 @@ const PROVIDERS: ProviderDef[] = [
     ring: "ring-blue-500/15",
     check: "bg-blue-500 text-white",
   },
+  {
+    id: "mangocode",
+    name: "MangoCode",
+    infoKey: "providerSelection.providerInfo.mangocode",
+    accent: "border-orange-500 dark:border-orange-400",
+    ring: "ring-orange-500/15",
+    check: "bg-orange-500 text-white",
+  },
 ];
 
 function getModelConfig(p: SessionProvider) {
   if (p === "claude") return CLAUDE_MODELS;
   if (p === "codex") return CODEX_MODELS;
   if (p === "gemini") return GEMINI_MODELS;
+  if (p === "mangocode") return MANGOCODE_MODELS;
   return CURSOR_MODELS;
 }
 

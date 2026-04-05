@@ -84,7 +84,7 @@ import { Scheduler } from './scheduler/index.js';
 import conductorRoutes from './routes/conductor.js';
 import { createHooksReceiver } from './hooks-receiver.js';
 
-const VALID_PROVIDERS = ['claude', 'codex', 'cursor', 'gemini'];
+const VALID_PROVIDERS = ['claude', 'codex', 'cursor', 'gemini', 'mangocode'];
 
 // File system watchers for provider project/session folders
 const PROVIDER_WATCH_PATHS = [

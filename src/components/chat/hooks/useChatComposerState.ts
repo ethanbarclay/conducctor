@@ -638,6 +638,25 @@ export function useChatComposerState({
             toolsSettings,
           },
         });
+      } else if (provider === 'mangocode') {
+        // MangoCode uses the same flags as Claude — route through claude-command with provider override
+        sendMessage({
+          type: 'claude-command',
+          command: messageContent,
+          options: {
+            projectPath: resolvedProjectPath,
+            cwd: resolvedProjectPath,
+            sessionId: effectiveSessionId,
+            resume: Boolean(effectiveSessionId),
+            toolsSettings,
+            permissionMode,
+            model: claudeModel,
+            sessionSummary,
+            images: uploadedImages,
+            useContainer: toolsSettings?.containerIsolation !== false,
+            provider: 'mangocode',
+          },
+        });
       } else {
         sendMessage({
           type: 'claude-command',
