@@ -9,8 +9,10 @@
 import { spawn } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
+import { readdirSync, statSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { homedir } from 'os'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -284,6 +286,21 @@ export class ProcessManager extends EventEmitter {
         childProc.on('exit', (code) => {
           this.activeProcs.delete(agentId)
           agent.busy = false
+
+          // MangoCode: detect session ID from most recent session file
+          if (isMango && !agent.sessionId) {
+            try {
+              const sessDir = join(homedir(), '.mangocode', 'sessions')
+              const files = readdirSync(sessDir)
+                .filter(f => f.endsWith('.json'))
+                .map(f => ({ name: f, mtime: statSync(join(sessDir, f)).mtimeMs }))
+                .sort((a, b) => b.mtime - a.mtime)
+              if (files.length > 0) {
+                agent.sessionId = files[0].name.replace('.json', '')
+              }
+            } catch { /* ignore */ }
+          }
+
           this.emit('agent:turn_complete', { agentId, code })
           resolve(code)
         })
