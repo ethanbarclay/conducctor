@@ -56,8 +56,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     const sid = realSessionId || eid;
     console.log(`[Conductor Bridge] event type=${event.type} subtype=${event.subtype || ''} agentId=${eid}`);
 
-    // ── system init: capture session_id
-    if (event.type === 'system' && event.subtype === 'init') {
+    // ── system init: capture session_id (Claude: type=system/subtype=init, Gemini: type=init)
+    if ((event.type === 'system' && event.subtype === 'init') || event.type === 'init') {
       if (event.session_id) {
         realSessionId = event.session_id;
         processManager.setSessionId(eid, realSessionId);
@@ -144,17 +144,18 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
-    // ── Gemini: message events (type: "message" with role + delta)
-    if (event.type === 'message' && event.role === 'assistant') {
-      if (event.content && event.delta) {
+    // ── Gemini: message events (type: "message" with role)
+    if (event.type === 'message') {
+      if (event.role === 'assistant' && event.content) {
         writer.send(createNormalizedMessage({
-          kind: 'text',
+          kind: event.delta ? 'stream_delta' : 'text',
           role: 'assistant',
           content: event.content,
           sessionId: realSessionId || sid,
           provider: PROVIDER,
         }));
       }
+      // Skip user message echo
       return;
     }
 
