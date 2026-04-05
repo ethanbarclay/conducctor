@@ -36,7 +36,7 @@ async function conductorFetch(path: string, token: string, options: RequestInit 
   return res.json();
 }
 
-export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }) {
+export default function OrchestrationPanel({ isVisible, selectedProjectPath = '' }: { isVisible: boolean; selectedProjectPath?: string }) {
   const { token } = useAuth();
   const { agents, messages, agentEvents, isConnected, addAgent } = useConductorWebSocket();
 
@@ -101,11 +101,11 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
   );
 
   const handleSpawnAgent = useCallback(() => {
-    setSpawnDialog((prev) => ({ ...prev, open: true }));
-  }, []);
+    setSpawnDialog((prev) => ({ ...prev, open: true, projectPath: prev.projectPath || selectedProjectPath }));
+  }, [selectedProjectPath]);
 
   const handleSpawnSubmit = useCallback(async () => {
-    if (!spawnDialog.prompt.trim() || spawnDialog.spawning) return;
+    if (!spawnDialog.prompt.trim() || !spawnDialog.projectPath.trim() || spawnDialog.spawning) return;
     setSpawnDialog((prev) => ({ ...prev, spawning: true }));
     try {
       const result = await conductorFetch('/agents', token, {
@@ -205,8 +205,10 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               type="text"
               value={spawnDialog.projectPath}
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, projectPath: e.target.value }))}
-              placeholder="Project path (optional)"
-              className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Project path (required)"
+              className={`text-xs px-3 py-2 bg-muted border rounded-md outline-none focus:ring-1 focus:ring-primary ${
+                !spawnDialog.projectPath.trim() ? 'border-red-500/50' : 'border-border'
+              }`}
               disabled={spawnDialog.spawning}
             />
             <select
@@ -264,7 +266,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               </label>
               <button
                 onClick={handleSpawnSubmit}
-                disabled={spawnDialog.spawning || !spawnDialog.prompt.trim()}
+                disabled={spawnDialog.spawning || !spawnDialog.prompt.trim() || !spawnDialog.projectPath.trim()}
                 className="ml-auto text-xs px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {spawnDialog.spawning && (

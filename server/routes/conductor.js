@@ -33,34 +33,30 @@ router.post('/agents', async (req, res) => {
             return res.status(400).json({ error: 'prompt or sessionId is required' });
         }
 
-        // Generate MCP config so the agent can message other agents
-        const agentId = req.body.agentId || undefined;
-        const mcpConfig = mcpBroker.getMCPConfig(agentId || 'pending');
+        const { randomUUID } = await import('crypto');
+        const agentId = req.body.agentId || randomUUID();
 
-        const spawnedId = await processManager.spawn({
+        // Spawn async — don't wait for the first turn to complete.
+        // Return immediately so the UI can show the agent in the grid.
+        processManager.spawn({
             prompt,
             projectId: projectPath,
             sessionId,
             agentId,
             useContainer: !!useContainer,
-            mcpConfig,
             role: role || 'agent',
             provider: provider || 'claude',
             model: model || undefined,
             permissionMode: permissionMode || undefined,
+        }).catch(err => {
+            console.error(`[Conductor] Agent ${agentId} spawn error:`, err.message);
         });
 
-        // Update MCP config with actual agent ID if it was auto-generated
-        if (!agentId) {
-            // The agent already has the MCP server URL; the x-agent-id header
-            // is set per-request by the CC instance via the config
-        }
-
         if (autoCompactThreshold !== undefined) {
-            contextMonitor.setThreshold(spawnedId, autoCompactThreshold);
+            contextMonitor.setThreshold(agentId, autoCompactThreshold);
         }
 
-        res.json({ agentId: spawnedId, status: 'spawned' });
+        res.json({ agentId, status: 'spawned' });
     } catch (err) {
         console.error('[Conductor] Spawn error:', err);
         res.status(500).json({ error: err.message });

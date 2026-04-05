@@ -101,7 +101,7 @@ function MainContent({
         <div className="flex h-full flex-col">
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <div className="flex min-h-0 min-w-[200px] flex-col overflow-hidden flex-1">
-              <OrchestrationPanel isVisible={activeTab === 'agents'} />
+              <OrchestrationPanel isVisible={activeTab === 'agents'} selectedProjectPath={selectedProject?.fullPath || selectedProject?.path || ''} />
               <ObservabilityPanel isVisible={activeTab === 'observability'} />
               <SchedulerPanel isVisible={activeTab === 'scheduler'} />
             </div>
