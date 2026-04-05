@@ -148,27 +148,19 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     // ── Gemini: message events (type: "message" with role)
     if (event.type === 'message') {
       if (event.role === 'assistant' && event.content) {
-        if (event.delta) {
-          // Gemini delta messages contain the FULL accumulated text.
-          // Extract only the new portion to avoid duplicates.
-          const fullContent = event.content;
-          const newContent = fullContent.startsWith(lastGeminiContent)
-            ? fullContent.slice(lastGeminiContent.length)
+        const fullContent = event.content;
+        // Gemini delta messages contain the FULL accumulated text.
+        // Extract only the new portion to avoid duplicates.
+        const newContent = fullContent.startsWith(lastGeminiContent)
+          ? fullContent.slice(lastGeminiContent.length)
+          : (lastGeminiContent && fullContent.includes(lastGeminiContent))
+            ? fullContent.slice(fullContent.indexOf(lastGeminiContent) + lastGeminiContent.length)
             : fullContent;
-          lastGeminiContent = fullContent;
-          if (newContent) {
-            writer.send(createNormalizedMessage({
-              kind: 'stream_delta',
-              content: newContent,
-              sessionId: realSessionId || sid,
-              provider: PROVIDER,
-            }));
-          }
-        } else {
+        lastGeminiContent = fullContent;
+        if (newContent) {
           writer.send(createNormalizedMessage({
-            kind: 'text',
-            role: 'assistant',
-            content: event.content,
+            kind: 'stream_delta',
+            content: newContent,
             sessionId: realSessionId || sid,
             provider: PROVIDER,
           }));
@@ -205,6 +197,25 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
 
     // ── result: final token budget (both Claude and Gemini)
     if (event.type === 'result') {
+      // Send stream_end to close any streaming delta
+      writer.send(createNormalizedMessage({
+        kind: 'stream_end',
+        sessionId: realSessionId || sid,
+        provider: PROVIDER,
+      }));
+      lastGeminiContent = ''; // Reset for next turn
+
+      // Handle Gemini error results
+      if (event.status === 'error' && event.error) {
+        writer.send(createNormalizedMessage({
+          kind: 'error',
+          content: event.error.message || JSON.stringify(event.error),
+          sessionId: realSessionId || sid,
+          provider: PROVIDER,
+        }));
+        return;
+      }
+
       // Claude format
       if (event.modelUsage) {
         const modelKey = Object.keys(event.modelUsage)[0];

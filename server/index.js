@@ -1907,15 +1907,21 @@ function handleShellConnection(ws) {
                         let resumeId = sessionId;
                         if (hasSession && sessionId) {
                             try {
-                                // Gemini CLI enforces its own native session IDs, unlike other agents that accept arbitrary string names.
-                                // The UI only knows about its internal generated `sessionId` (e.g. gemini_1234).
-                                // We must fetch the mapping from the backend session manager to pass the native `cliSessionId` to the shell.
+                                // Check session manager first
                                 const sess = sessionManager.getSession(sessionId);
                                 if (sess && sess.cliSessionId) {
                                     resumeId = sess.cliSessionId;
-                                    // Validate the looked-up CLI session ID too
                                     if (!safeSessionIdPattern.test(resumeId)) {
                                         resumeId = null;
+                                    }
+                                }
+                                // Fall back to conductor ProcessManager session mapping
+                                if (!resumeId || resumeId === sessionId) {
+                                    const conductorAgent = conductor.processManager.list().find(
+                                        a => a.agentId === sessionId || a.sessionId === sessionId
+                                    );
+                                    if (conductorAgent?.sessionId) {
+                                        resumeId = conductorAgent.sessionId;
                                     }
                                 }
                             } catch (err) {
