@@ -12,7 +12,7 @@
 
 import { createNormalizedMessage } from './providers/types.js';
 
-const PROVIDER = 'claude';
+const DEFAULT_PROVIDER = 'claude';
 
 // Active bridges: agentId → { writer, cleanup }
 const activeBridges = new Map();
@@ -35,6 +35,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
   } = options;
 
   const workingDir = projectPath || cwd;
+  const PROVIDER = provider || DEFAULT_PROVIDER;
 
   if (!useContainer) {
     writer.send(createNormalizedMessage({
