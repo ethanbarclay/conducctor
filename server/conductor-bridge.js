@@ -35,7 +35,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
   } = options;
 
   const workingDir = projectPath || cwd;
-  const PROVIDER = provider || DEFAULT_PROVIDER;
+  // MangoCode presents as 'claude' to the UI since they share the same message format
+  const PROVIDER = (provider === 'mangocode') ? 'claude' : (provider || DEFAULT_PROVIDER);
 
   if (!useContainer) {
     writer.send(createNormalizedMessage({
