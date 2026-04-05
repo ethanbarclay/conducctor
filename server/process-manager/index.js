@@ -193,10 +193,19 @@ export class ProcessManager extends EventEmitter {
         const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
         args.push('--allowedTools', ...allAllowed)
 
-        if (agent.disallowedTools?.length) {
-          args.push('--disallowedTools', ...agent.disallowedTools)
-        }
+        // Disallow built-in tools that conflict with conductor equivalents
+        const conductorDisallowed = [
+          'RemoteTrigger',  // Use mcp__conductor__schedule_task instead
+          'CronCreate',     // Use mcp__conductor__schedule_task instead
+          'CronDelete',     // Use mcp__conductor__delete_scheduled_task instead
+          'CronList',       // Use mcp__conductor__list_scheduled_tasks instead
+        ]
+        const allDisallowed = [...(agent.disallowedTools || []), ...conductorDisallowed]
+        args.push('--disallowedTools', ...allDisallowed)
       }
+
+      // System prompt to orient agents toward conductor tools
+      args.push('--system-prompt', 'You are running inside Conducctor, a multi-agent orchestration platform. You have access to conductor MCP tools (mcp__conductor__*) for: scheduling tasks (schedule_task, list_scheduled_tasks, update_scheduled_task, run_scheduled_task, delete_scheduled_task), inter-agent communication (send_message, read_messages, list_agents), shared state (get_shared_state, set_shared_state), spawning sub-agents (spawn_agent), and requesting reviews (request_review). Always prefer these conductor tools over built-in alternatives like RemoteTrigger or CronCreate. Scheduled tasks run locally on this server with full filesystem access.')
 
       // MCP config for inter-agent communication (both providers)
       const mcpConfigJson = this._buildMCPConfigArg(agentId)
