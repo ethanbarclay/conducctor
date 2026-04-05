@@ -1599,11 +1599,14 @@ function handleChatConnection(ws, request) {
                 console.log('📁 Project:', data.options?.projectPath || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
 
-                // Container isolation: default ON from frontend settings.
-                // useContainer=false is a dangerous opt-out.
+                const msgProvider = data.options?.provider || 'claude';
                 const useContainer = data.options?.useContainer !== false;
 
-                if (useContainer) {
+                // MangoCode always goes through conductor bridge (no SDK fallback)
+                if (msgProvider === 'mangocode') {
+                    console.log('🥭 MangoCode agent');
+                    await queryClaudeContainerized(data.command, { ...data.options, useContainer: false }, writer, conductor);
+                } else if (useContainer) {
                     console.log('🐳 Container: YES (isolated)');
                     await queryClaudeContainerized(data.command, data.options, writer, conductor);
                 } else {
@@ -1933,6 +1936,13 @@ function handleShellConnection(ws) {
                             shellCommand = `${command} --resume "${resumeId}"`;
                         } else {
                             shellCommand = command;
+                        }
+                    } else if (provider === 'mangocode') {
+                        const command = initialCommand || 'mangocode';
+                        if (hasSession && sessionId) {
+                            shellCommand = `PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud ${command} --resume "${sessionId}" --provider google-vertex || ${command} --provider google-vertex`;
+                        } else {
+                            shellCommand = `PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud ${command} --provider google-vertex`;
                         }
                     } else {
                         // Claude (default provider)
