@@ -206,8 +206,13 @@ export class ProcessManager extends EventEmitter {
           'NotebookEdit', 'TodoWrite',
         ]
         const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
-        const allowFlag = isMango ? '--allowed-tools' : '--allowedTools'
-        args.push(allowFlag, ...allAllowed)
+        if (isMango) {
+          // MangoCode takes comma-separated string
+          args.push('--allowed-tools', allAllowed.join(','))
+        } else {
+          // Claude takes space-separated arguments
+          args.push('--allowedTools', ...allAllowed)
+        }
 
         // Disallow built-in tools that conflict with conductor equivalents
         const conductorDisallowed = [
@@ -217,8 +222,11 @@ export class ProcessManager extends EventEmitter {
           'CronList',
         ]
         const allDisallowed = [...(agent.disallowedTools || []), ...conductorDisallowed]
-        const disallowFlag = isMango ? '--disallowed-tools' : '--disallowedTools'
-        args.push(disallowFlag, ...allDisallowed)
+        if (isMango) {
+          args.push('--disallowed-tools', allDisallowed.join(','))
+        } else {
+          args.push('--disallowedTools', ...allDisallowed)
+        }
       }
 
       // System prompt to orient agents toward conductor tools
