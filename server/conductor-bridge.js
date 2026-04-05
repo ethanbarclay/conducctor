@@ -143,8 +143,48 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       return;
     }
 
-    // ── result: final token budget
+    // ── Gemini: message events (type: "message" with role + delta)
+    if (event.type === 'message' && event.role === 'assistant') {
+      if (event.content && event.delta) {
+        writer.send(createNormalizedMessage({
+          kind: 'text',
+          role: 'assistant',
+          content: event.content,
+          sessionId: realSessionId || sid,
+          provider: PROVIDER,
+        }));
+      }
+      return;
+    }
+
+    // ── Gemini: tool call events
+    if (event.type === 'toolCall') {
+      writer.send(createNormalizedMessage({
+        kind: 'tool_use',
+        toolName: event.name || event.toolName || 'unknown',
+        toolInput: event.input || event.args || {},
+        toolId: event.id || '',
+        sessionId: realSessionId || sid,
+        provider: PROVIDER,
+      }));
+      return;
+    }
+
+    if (event.type === 'toolResult') {
+      writer.send(createNormalizedMessage({
+        kind: 'tool_result',
+        toolId: event.id || '',
+        content: typeof event.output === 'string' ? event.output : JSON.stringify(event.output || ''),
+        isError: Boolean(event.isError),
+        sessionId: realSessionId || sid,
+        provider: PROVIDER,
+      }));
+      return;
+    }
+
+    // ── result: final token budget (both Claude and Gemini)
     if (event.type === 'result') {
+      // Claude format
       if (event.modelUsage) {
         const modelKey = Object.keys(event.modelUsage)[0];
         const m = event.modelUsage[modelKey];
@@ -160,6 +200,19 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
             provider: PROVIDER,
           }));
         }
+      }
+      // Gemini format
+      if (event.stats) {
+        const s = event.stats;
+        const used = (s.input_tokens || s.input || 0) + (s.output_tokens || 0);
+        const contextWindow = parseInt(process.env.CONTEXT_WINDOW) || 160000;
+        writer.send(createNormalizedMessage({
+          kind: 'status',
+          text: 'token_budget',
+          tokenBudget: { used, total: contextWindow },
+          sessionId: realSessionId || sid,
+          provider: PROVIDER,
+        }));
       }
       return;
     }

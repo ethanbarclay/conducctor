@@ -38,6 +38,7 @@ export class ProcessManager extends EventEmitter {
       sessionId: opts.sessionId || null,
       projectId: opts.projectId,
       role: opts.role || 'agent',
+      provider: opts.provider || 'claude',
       model: opts.model || null,
       useContainer: !!opts.useContainer,
       permissionMode: opts.permissionMode || null,
@@ -142,69 +143,79 @@ export class ProcessManager extends EventEmitter {
 
       agent.busy = true
 
-      const args = ['--output-format', 'stream-json', '--verbose']
+      const isGemini = agent.provider === 'gemini'
+      const cliBinary = isGemini ? 'gemini' : 'claude'
+      const args = ['--output-format', 'stream-json']
+
+      if (!isGemini) args.push('--verbose')
 
       // Model
       if (agent.model) {
         args.push('--model', agent.model)
       }
 
-      // Permission mode
-      if (agent.permissionMode) {
-        args.push('--permission-mode', agent.permissionMode)
-      }
-      if (agent.skipPermissions) {
-        args.push('--dangerously-skip-permissions')
+      if (isGemini) {
+        // Gemini-specific flags
+        args.push('--yolo') // auto-approve all tools
+      } else {
+        // Claude-specific flags
+        if (agent.permissionMode) {
+          args.push('--permission-mode', agent.permissionMode)
+        }
+        if (agent.skipPermissions) {
+          args.push('--dangerously-skip-permissions')
+        }
+
+        // Hook settings for observability (Claude only)
+        const hookSettings = this._buildHookSettings(agent)
+        if (hookSettings) {
+          args.push('--settings', hookSettings)
+        }
+
+        // Allowed tools (Claude only — Gemini uses --yolo)
+        const conductorTools = [
+          'mcp__conductor__send_message',
+          'mcp__conductor__read_messages',
+          'mcp__conductor__list_agents',
+          'mcp__conductor__get_shared_state',
+          'mcp__conductor__set_shared_state',
+          'mcp__conductor__request_review',
+          'mcp__conductor__spawn_agent',
+          'mcp__conductor__schedule_task',
+          'mcp__conductor__list_scheduled_tasks',
+          'mcp__conductor__update_scheduled_task',
+          'mcp__conductor__run_scheduled_task',
+          'mcp__conductor__delete_scheduled_task',
+          'WebSearch', 'WebFetch',
+          'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
+          'NotebookEdit', 'TodoWrite',
+        ]
+        const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
+        args.push('--allowedTools', ...allAllowed)
+
+        if (agent.disallowedTools?.length) {
+          args.push('--disallowedTools', ...agent.disallowedTools)
+        }
       }
 
-      // MCP config for inter-agent communication
+      // MCP config for inter-agent communication (both providers)
       const mcpConfigJson = this._buildMCPConfigArg(agentId)
-      if (mcpConfigJson) {
+      if (mcpConfigJson && !isGemini) {
         args.push('--mcp-config', mcpConfigJson)
       }
 
-      // Hook settings for observability
-      const hookSettings = this._buildHookSettings(agent)
-      if (hookSettings) {
-        args.push('--settings', hookSettings)
-      }
-
-      // Allowed tools: conductor MCP + common CC tools that need explicit allow
-      const conductorTools = [
-        'mcp__conductor__send_message',
-        'mcp__conductor__read_messages',
-        'mcp__conductor__list_agents',
-        'mcp__conductor__get_shared_state',
-        'mcp__conductor__set_shared_state',
-        'mcp__conductor__request_review',
-        'mcp__conductor__spawn_agent',
-        'mcp__conductor__schedule_task',
-        'mcp__conductor__list_scheduled_tasks',
-        'mcp__conductor__update_scheduled_task',
-        'mcp__conductor__run_scheduled_task',
-        'mcp__conductor__delete_scheduled_task',
-        // Standard CC tools that frequently need permission
-        'WebSearch', 'WebFetch',
-        'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-        'NotebookEdit', 'TodoWrite',
-      ]
-      const allAllowed = [...(agent.allowedTools || []), ...conductorTools]
-      args.push('--allowedTools', ...allAllowed)
-
-      if (agent.disallowedTools?.length) {
-        args.push('--disallowedTools', ...agent.disallowedTools)
-      }
-
-      if (sessionId) {
+      // Prompt / session
+      if (isGemini) {
+        args.push('-p', message)
+      } else if (sessionId) {
         args.push('--resume', sessionId, '-p', message)
       } else {
-        // Force a fresh session — don't auto-continue previous conversations
         args.push('--session-id', agentId, '-p', message)
       }
 
       const proc = agent.useContainer
-        ? this.containerManager.spawn(agentId, args, { projectPath: agent.projectId })
-        : Promise.resolve(this._spawnLocal(args))
+        ? this.containerManager.spawn(agentId, args, { projectPath: agent.projectId, provider: agent.provider })
+        : Promise.resolve(this._spawnLocal(args, cliBinary))
 
       Promise.resolve(proc).then((childProc) => {
         this.activeProcs.set(agentId, childProc)
@@ -292,8 +303,8 @@ export class ProcessManager extends EventEmitter {
     })
   }
 
-  _spawnLocal(args) {
-    return spawn('claude', args, {
+  _spawnLocal(args, binary = 'claude') {
+    return spawn(binary, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env },
     })

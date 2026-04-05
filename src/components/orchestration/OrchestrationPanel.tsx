@@ -17,6 +17,7 @@ interface SpawnDialogState {
   prompt: string;
   role: string;
   projectPath: string;
+  provider: string;
   model: string;
   permissionMode: string;
   useContainer: boolean;
@@ -44,6 +45,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
     prompt: '',
     role: 'agent',
     projectPath: '',
+    provider: 'claude',
     model: 'sonnet',
     permissionMode: 'bypassPermissions',
     useContainer: true,
@@ -112,6 +114,7 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
           prompt: spawnDialog.prompt,
           projectPath: spawnDialog.projectPath || undefined,
           role: spawnDialog.role,
+          provider: spawnDialog.provider,
           model: spawnDialog.model,
           permissionMode: spawnDialog.permissionMode,
           useContainer: spawnDialog.useContainer,
@@ -207,14 +210,33 @@ export default function OrchestrationPanel({ isVisible }: { isVisible: boolean }
               disabled={spawnDialog.spawning}
             />
             <select
+              value={spawnDialog.provider}
+              onChange={(e) => setSpawnDialog((prev) => ({ ...prev, provider: e.target.value }))}
+              className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
+              disabled={spawnDialog.spawning}
+            >
+              <option value="claude">Claude Code</option>
+              <option value="gemini">Gemini CLI</option>
+            </select>
+            <select
               value={spawnDialog.model}
               onChange={(e) => setSpawnDialog((prev) => ({ ...prev, model: e.target.value }))}
               className="text-xs px-3 py-2 bg-muted border border-border rounded-md outline-none focus:ring-1 focus:ring-primary"
               disabled={spawnDialog.spawning}
             >
-              <option value="sonnet">Sonnet (fast)</option>
-              <option value="opus">Opus (powerful)</option>
-              <option value="haiku">Haiku (cheap)</option>
+              {spawnDialog.provider === 'gemini' ? (
+                <>
+                  <option value="">Auto</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                </>
+              ) : (
+                <>
+                  <option value="sonnet">Sonnet (fast)</option>
+                  <option value="opus">Opus (powerful)</option>
+                  <option value="haiku">Haiku (cheap)</option>
+                </>
+              )}
             </select>
             <select
               value={spawnDialog.permissionMode}

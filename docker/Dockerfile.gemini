@@ -1,0 +1,11 @@
+FROM node:22-slim
+
+# Install Gemini CLI
+RUN npm install -g @google/gemini-cli
+
+# Create workspace and home directory for non-root user
+RUN mkdir -p /workspace /home/node/.gemini && chown -R node:node /home/node /workspace
+
+WORKDIR /workspace
+
+ENTRYPOINT ["gemini"]

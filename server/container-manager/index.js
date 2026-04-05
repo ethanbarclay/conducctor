@@ -40,6 +40,9 @@ export class ContainerManager extends EventEmitter {
     } = opts
 
     const home = homedir()
+    const provider = opts.provider || 'claude'
+    const isGemini = provider === 'gemini'
+    const containerImage = isGemini ? 'conductor-gemini:latest' : image
     // Run container as host user so session files have correct ownership
     const uid = process.getuid?.() ?? 1000
     const gid = process.getgid?.() ?? 1000
@@ -57,22 +60,27 @@ export class ContainerManager extends EventEmitter {
       // Mount MCP stdio bridge and hook relay for inter-agent communication
       '-v', `${BRIDGE_SCRIPT}:/opt/conductor/mcp-stdio-bridge.js:ro`,
       '-v', `${HOOK_RELAY}:/opt/conductor/hook-relay.sh:ro`,
-      // Mount Claude config at the same host paths so sessions are filed correctly
-      '-v', `${home}/.claude:${home}/.claude:rw`,
-      '-v', `${home}/.claude.json:${home}/.claude.json:rw`,
-      // Set HOME to host HOME so claude CLI creates sessions under the same paths
+      // Mount provider config at the same host paths
+      ...(isGemini ? [
+        '-v', `${home}/.gemini:${home}/.gemini:rw`,
+      ] : [
+        '-v', `${home}/.claude:${home}/.claude:rw`,
+        '-v', `${home}/.claude.json:${home}/.claude.json:rw`,
+      ]),
+      // Set HOME to host HOME so CLI creates sessions under the same paths
       '--env', `HOME=${home}`,
       // Network access to MCP broker on host
       '--add-host', 'host.docker.internal:host-gateway',
       '--env', `CONDUCTOR_MCP_URL=http://host.docker.internal:${this.mcpBrokerPort}/mcp`,
       '--env', `CONDUCTOR_AGENT_ID=${agentId}`,
       '--env', `CONDUCTOR_HOOKS_URL=http://host.docker.internal:${process.env.SERVER_PORT || 3001}/api/conductor/hooks`,
-      // Pass through API key if set
+      // Pass through API keys if set
       ...(process.env.ANTHROPIC_API_KEY ? ['--env', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
+      ...(process.env.GEMINI_API_KEY ? ['--env', `GEMINI_API_KEY=${process.env.GEMINI_API_KEY}`] : []),
       // Working directory — use real host path so CLI cwd matches
       '--workdir', projectPath || '/workspace',
-      image,
-      // Don't add 'claude' here — Dockerfile ENTRYPOINT is already ["claude"]
+      containerImage,
+      // Don't add CLI binary here — Dockerfile ENTRYPOINT provides it
       ...claudeArgs,
     ]
 
