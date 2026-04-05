@@ -1634,7 +1634,18 @@ function handleChatConnection(ws, request) {
                 console.log('📁 Project:', data.options?.projectPath || data.options?.cwd || 'Unknown');
                 console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
                 console.log('🤖 Model:', data.options?.model || 'default');
-                await spawnGemini(data.command, data.options, writer);
+
+                const useContainer = data.options?.useContainer !== false;
+                if (useContainer) {
+                    console.log('🐳 Gemini Container: YES');
+                    await queryClaudeContainerized(data.command, {
+                        ...data.options,
+                        provider: 'gemini',
+                        useContainer: true,
+                    }, writer, conductor);
+                } else {
+                    await spawnGemini(data.command, data.options, writer);
+                }
             } else if (data.type === 'cursor-resume') {
                 // Backward compatibility: treat as cursor-command with resume and no prompt
                 console.log('[DEBUG] Cursor resume session (compat):', data.sessionId);

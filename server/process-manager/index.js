@@ -206,7 +206,11 @@ export class ProcessManager extends EventEmitter {
 
       // Prompt / session
       if (isGemini) {
-        args.push('-p', message)
+        if (sessionId) {
+          args.push('--resume', sessionId, '-p', message)
+        } else {
+          args.push('-p', message)
+        }
       } else if (sessionId) {
         args.push('--resume', sessionId, '-p', message)
       } else {

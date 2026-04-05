@@ -29,6 +29,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     sessionId,
     useContainer = true,
     role = 'agent',
+    provider = 'claude',
     permissionMode,
     toolsSettings,
   } = options;
@@ -269,6 +270,7 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       sessionId: sessionId || undefined,
       useContainer,
       role,
+      provider,
       agentId, // pass pre-generated ID
       permissionMode,
       allowedTools: toolsSettings?.allowedTools,
