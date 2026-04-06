@@ -174,11 +174,13 @@ export class ProcessManager extends EventEmitter {
         args.push('--yolo') // auto-approve all tools
       } else {
         // Claude + MangoCode shared flags
-        if (agent.permissionMode) {
-          args.push('--permission-mode', agent.permissionMode)
-        }
-        if (agent.skipPermissions) {
+        if (agent.skipPermissions || agent.permissionMode === 'bypassPermissions') {
           args.push('--dangerously-skip-permissions')
+        } else if (agent.permissionMode && agent.permissionMode !== 'default') {
+          // MangoCode uses kebab-case permission modes
+          const modeMap = { acceptEdits: 'accept-edits', plan: 'plan' }
+          const mode = isMango ? (modeMap[agent.permissionMode] || agent.permissionMode) : agent.permissionMode
+          args.push('--permission-mode', mode)
         }
 
         // Hook settings for observability (Claude + MangoCode)
