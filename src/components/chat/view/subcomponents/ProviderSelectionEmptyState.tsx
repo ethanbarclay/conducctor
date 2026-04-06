@@ -136,9 +136,9 @@ export default function ProviderSelectionEmptyState({
   };
 
   const handleModelChange = (value: string) => {
-    if (provider === "claude") {
+    if (provider === "claude" || provider === "mangocode") {
       setClaudeModel(value);
-      localStorage.setItem("claude-model", value);
+      localStorage.setItem(provider === "mangocode" ? "mangocode-model" : "claude-model", value);
     } else if (provider === "codex") {
       setCodexModel(value);
       localStorage.setItem("codex-model", value);

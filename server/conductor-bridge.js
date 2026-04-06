@@ -82,6 +82,11 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       const content = event.message.content;
       const parentToolUseId = event.parent_tool_use_id || null;
 
+      // Skip MangoCode's internal "Brief" tool — it duplicates the text response
+      if (content.length === 1 && content[0].type === 'tool_use' && content[0].name === 'Brief') {
+        return;
+      }
+
       for (const block of content) {
         if (block.type === 'thinking' && block.thinking) {
           writer.send(createNormalizedMessage({
@@ -133,6 +138,10 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     // ── user message (tool results)
     if (event.type === 'user' && event.message?.content) {
       for (const block of event.message.content) {
+        // Skip MangoCode's Brief tool results
+        if (block.type === 'tool_result' && block.tool_use_id?.startsWith('function-call-')) {
+          continue;
+        }
         if (block.type === 'tool_result') {
           writer.send(createNormalizedMessage({
             kind: 'tool_result',
