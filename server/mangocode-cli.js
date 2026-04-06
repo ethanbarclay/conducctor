@@ -27,7 +27,7 @@ async function spawnMangoCode(command, options = {}, ws) {
     const args = ['--output-format', 'stream-json', '--provider', 'google-vertex'];
 
     // Model
-    const model = options.model || localStorage?.getItem?.('mangocode-model') || 'google/gemini-2.5-pro';
+    const model = options.model || 'google/gemini-2.5-pro';
     if (model) {
         args.push('--model', model);
     }
@@ -86,9 +86,7 @@ async function spawnMangoCode(command, options = {}, ws) {
                 handleMangoEvent(event, ws, capturedSessionId, sessionCreatedSent, (newId) => {
                     capturedSessionId = newId;
                     sessionCreatedSent = true;
-                    // Update writer session ID so subsequent messages are tagged correctly
                     if (ws.setSessionId) ws.setSessionId(newId);
-                    // Register with session manager
                     sessionManager.addSession(capturedSessionId, {
                         cliSessionId: newId,
                         provider: 'mangocode',
@@ -96,17 +94,18 @@ async function spawnMangoCode(command, options = {}, ws) {
                     });
                     activeMangoProcesses.set(capturedSessionId, activeMangoProcesses.get(processKey));
                 });
-            } catch {
-                // Skip non-JSON lines
+            } catch (err) {
+                if (line.trim().startsWith('{')) {
+                    console.error('[MangoCode] Error processing event:', err.message);
+                }
             }
         }
     });
 
     proc.stderr.on('data', (chunk) => {
         const text = chunk.toString();
-        // Filter noisy messages
-        if (text.includes('DEBUG') || text.includes('INFO') || text.includes('MangoCode')) return;
-        if (text.includes('STARTUP') || text.includes('cleanup_ops') || text.includes('Connecting to')) return;
+        if (text.includes('DEBUG') || text.includes('INFO')) return;
+        if (text.includes('STARTUP') || text.includes('cleanup_ops')) return;
         console.error('[MangoCode stderr]', text.trim());
     });
 
@@ -135,29 +134,77 @@ async function spawnMangoCode(command, options = {}, ws) {
 
 function handleMangoEvent(event, ws, currentSessionId, sessionCreatedSent, onSessionCreated) {
     const sid = event.session_id || currentSessionId;
+    const socketSessionId = (ws.getSessionId && ws.getSessionId()) || sid;
 
     // Init event — capture session ID
     if (event.type === 'system' && event.subtype === 'init') {
         if (event.session_id && !sessionCreatedSent) {
-            onSessionCreated(event.session_id);
+            // Send session_created FIRST, before callback which may throw
             ws.send(createNormalizedMessage({
                 kind: 'session_created',
                 newSessionId: event.session_id,
                 sessionId: event.session_id,
                 provider: 'mangocode',
             }));
+            onSessionCreated(event.session_id);
         }
         return;
     }
 
-    // Use the Claude adapter — MangoCode stream-json matches Claude's format
-    const normalized = claudeAdapter.normalizeMessage(event, sid);
-    for (const msg of normalized) {
-        if (event.parent_tool_use_id && !msg.parentToolUseId) {
-            msg.parentToolUseId = event.parent_tool_use_id;
+    // Assistant text — emit as stream_delta + stream_end (like Gemini)
+    if (event.type === 'assistant') {
+        const content = event.message?.content;
+        if (!content) return;
+        const blocks = Array.isArray(content) ? content : [content];
+        for (const block of blocks) {
+            const text = typeof block === 'string' ? block : block?.text;
+            if (text) {
+                ws.send(createNormalizedMessage({
+                    kind: 'stream_delta',
+                    content: text,
+                    sessionId: socketSessionId,
+                    provider: 'mangocode',
+                }));
+            }
         }
-        msg.provider = 'mangocode';
-        ws.send(msg);
+        ws.send(createNormalizedMessage({
+            kind: 'stream_end',
+            sessionId: socketSessionId,
+            provider: 'mangocode',
+        }));
+        return;
+    }
+
+    // Content block streaming
+    if (event.type === 'content_block_delta' && event.delta?.text) {
+        ws.send(createNormalizedMessage({
+            kind: 'stream_delta',
+            content: event.delta.text,
+            sessionId: socketSessionId,
+            provider: 'mangocode',
+        }));
+        return;
+    }
+    if (event.type === 'content_block_stop') {
+        ws.send(createNormalizedMessage({
+            kind: 'stream_end',
+            sessionId: socketSessionId,
+            provider: 'mangocode',
+        }));
+        return;
+    }
+
+    // Tool use/result — use Claude adapter
+    if (event.type === 'tool_use' || event.type === 'tool_result') {
+        const normalized = claudeAdapter.normalizeMessage(event, socketSessionId);
+        for (const msg of normalized) {
+            if (event.parent_tool_use_id && !msg.parentToolUseId) {
+                msg.parentToolUseId = event.parent_tool_use_id;
+            }
+            msg.provider = 'mangocode';
+            ws.send(msg);
+        }
+        return;
     }
 
     // Result event — token budget
@@ -172,11 +219,19 @@ function handleMangoEvent(event, ws, currentSessionId, sessionCreatedSent, onSes
                     kind: 'status',
                     text: 'token_budget',
                     tokenBudget: { used, total: contextWindow },
-                    sessionId: sid,
+                    sessionId: socketSessionId,
                     provider: 'mangocode',
                 }));
             }
         }
+        return;
+    }
+
+    // All other events — pass through Claude adapter
+    const normalized = claudeAdapter.normalizeMessage(event, socketSessionId);
+    for (const msg of normalized) {
+        msg.provider = 'mangocode';
+        ws.send(msg);
     }
 }
 
