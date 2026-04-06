@@ -9,6 +9,7 @@
 
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
 import sessionManager from './sessionManager.js';
@@ -49,23 +50,28 @@ async function spawnMangoCode(command, options = {}, ws) {
         args.push('--resume', resumeId);
     }
 
-    // Hook settings for observability — same hook-relay.sh as Claude
+    // Hook settings for observability — write to temp file to avoid shell escaping issues
     const relayPath = path.join(__dirname, 'hook-relay.sh');
     const hookEvents = ['PreToolUse', 'PostToolUse', 'PostModelTurn', 'Stop'];
     const hooks = {};
     for (const event of hookEvents) {
         hooks[event] = [{ matcher: '', hooks: [relayPath] }];
     }
-    args.push('--settings', JSON.stringify({ hooks }));
+    const settingsFile = path.join(os.tmpdir(), `mangocode-hooks-${Date.now()}.json`);
+    fs.writeFileSync(settingsFile, JSON.stringify({ hooks }));
+    args.push('--settings', settingsFile);
 
     // Prompt
     if (command && command.trim()) {
         args.push('-p', command);
     }
 
-    // Agent ID for hook relay
+    // Process tracking key (unique per spawn)
     const processKey = sessionId || `mango-${Date.now()}`;
-    const agentId = processKey;
+    // Agent ID for hooks — use a stable project-scoped key so all messages
+    // for the same project map to one agent in the Observe tab, regardless
+    // of whether it's a new session or a resume.
+    const agentId = `mangocode-${workingDir.replace(/[^a-zA-Z0-9]/g, '-').slice(-30)}`;
 
     // Environment
     const env = {
@@ -129,6 +135,7 @@ async function spawnMangoCode(command, options = {}, ws) {
     proc.on('exit', (code) => {
         activeMangoProcesses.delete(processKey);
         if (capturedSessionId) activeMangoProcesses.delete(capturedSessionId);
+        try { fs.unlinkSync(settingsFile); } catch {}
 
         ws.send(createNormalizedMessage({
             kind: 'complete',

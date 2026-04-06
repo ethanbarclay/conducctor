@@ -57,8 +57,12 @@ export function createHooksReceiver({ db, broadcastFn }) {
       const eventName = hook_event_name || req.body.hookEventName || req.body.event || 'unknown'
       const toolOutput = tool_response || req.body.tool_output
 
+      // Prefer x-agent-id header (set by CONDUCTOR_AGENT_ID env var in hook-relay.sh)
+      // over body fields, since MangoCode sends session_id but not agent_id in the body.
+      const resolvedAgentId = req.headers['x-agent-id'] || agent_id || null;
+
       insertStmt.run(
-        agent_id || req.headers['x-agent-id'] || null,
+        resolvedAgentId,
         session_id || null,
         eventName,
         tool_name || null,
@@ -70,7 +74,7 @@ export function createHooksReceiver({ db, broadcastFn }) {
       // Broadcast to WebSocket clients
       if (broadcastFn) {
         broadcastFn('hook:event', {
-          agentId: agent_id || req.headers['x-agent-id'] || null,
+          agentId: resolvedAgentId,
           sessionId: session_id,
           hookEvent: eventName,
           toolName: tool_name,
