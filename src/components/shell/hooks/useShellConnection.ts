@@ -151,12 +151,14 @@ export function useShellConnection({
                 const sessionProv = selectedSessionRef.current?.__provider;
                 // Use session.__provider for correctly-tagged providers (cursor, codex, gemini)
                 if (sessionProv && sessionProv !== 'claude') return sessionProv;
-                // For 'claude' sessions, check per-project provider first (set by provider picker),
-                // then global localStorage. This correctly distinguishes MangoCode vs Claude
-                // since MangoCode sessions are discovered as 'claude' from ~/.claude/projects/.
+                // Check per-project provider (set by provider picker / message send).
+                // This correctly distinguishes MangoCode vs Claude projects.
                 const projectPath = currentProject.fullPath || currentProject.path || '';
                 const projectProvider = projectPath ? localStorage.getItem(`provider-${projectPath}`) : null;
-                return projectProvider || localStorage.getItem('selected-provider') || 'claude';
+                if (projectProvider) return projectProvider;
+                // No per-project key: use session __provider if available (safe default
+                // for unseeded projects — correct for real Claude sessions)
+                return sessionProv || localStorage.getItem('selected-provider') || 'claude';
               })(),
               cols: currentTerminal.cols,
               rows: currentTerminal.rows,
