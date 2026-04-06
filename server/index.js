@@ -1603,10 +1603,17 @@ function handleChatConnection(ws, request) {
                 const msgProvider = data.options?.provider || 'claude';
                 const useContainer = data.options?.useContainer !== false;
 
-                // MangoCode uses its own spawn function (like Gemini)
-                if (msgProvider === 'mangocode') {
-                    console.log('🥭 MangoCode');
+                // MangoCode: containerized or direct spawn
+                if (msgProvider === 'mangocode' && !useContainer) {
+                    console.log('🥭 MangoCode (direct)');
                     await spawnMangoCode(data.command, data.options, writer);
+                } else if (msgProvider === 'mangocode' && useContainer) {
+                    console.log('🥭🐳 MangoCode (container)');
+                    await queryClaudeContainerized(data.command, {
+                        ...data.options,
+                        provider: 'mangocode',
+                        useContainer: true,
+                    }, writer, conductor);
                 } else if (useContainer) {
                     console.log('🐳 Container: YES (isolated)');
                     await queryClaudeContainerized(data.command, data.options, writer, conductor);
