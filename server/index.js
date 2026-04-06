@@ -1939,10 +1939,25 @@ function handleShellConnection(ws) {
                         }
                     } else if (provider === 'mangocode') {
                         const command = initialCommand || 'mangocode';
+                        const envPrefix = 'PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud';
+                        // MangoCode now stores sessions at ~/.claude/projects/ (same as CC)
+                        // so the standard session ID from the sidebar should work
                         if (hasSession && sessionId) {
-                            shellCommand = `PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud ${command} --resume "${sessionId}" --provider google-vertex || ${command} --provider google-vertex`;
+                            shellCommand = `${envPrefix} ${command} --resume "${sessionId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
                         } else {
-                            shellCommand = `PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud ${command} --provider google-vertex`;
+                            // Try conductor ProcessManager for the latest session
+                            let mangoResumeId = null;
+                            const mangoAgent = conductor.processManager.list()
+                                .filter(a => a.sessionId)
+                                .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0];
+                            if (mangoAgent?.sessionId) {
+                                mangoResumeId = mangoAgent.sessionId;
+                            }
+                            if (mangoResumeId) {
+                                shellCommand = `${envPrefix} ${command} --resume "${mangoResumeId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
+                            } else {
+                                shellCommand = `${envPrefix} ${command} --provider google-vertex`;
+                            }
                         }
                     } else {
                         // Claude (default provider)
