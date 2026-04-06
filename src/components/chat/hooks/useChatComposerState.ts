@@ -591,6 +591,11 @@ export function useChatComposerState({
       const resolvedProjectPath = selectedProject.fullPath || selectedProject.path || '';
       const sessionSummary = getNotificationSessionSummary(selectedSession, currentInput);
 
+      // Save per-project provider so the shell knows which CLI to launch
+      if (resolvedProjectPath) {
+        localStorage.setItem(`provider-${resolvedProjectPath}`, provider);
+      }
+
       if (provider === 'cursor') {
         sendMessage({
           type: 'cursor-command',
