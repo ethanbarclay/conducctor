@@ -30,6 +30,7 @@ type ProviderSelectionEmptyStateProps = {
   isTaskMasterInstalled: boolean | null;
   onShowAllTasks?: (() => void) | null;
   setInput: React.Dispatch<React.SetStateAction<string>>;
+  projectPath?: string;
 };
 
 type ProviderDef = {
@@ -123,6 +124,7 @@ export default function ProviderSelectionEmptyState({
   isTaskMasterInstalled,
   onShowAllTasks,
   setInput,
+  projectPath,
 }: ProviderSelectionEmptyStateProps) {
   const { t } = useTranslation("chat");
   const nextTaskPrompt = t("tasks.nextTaskPrompt", {
@@ -132,6 +134,9 @@ export default function ProviderSelectionEmptyState({
   const selectProvider = (next: SessionProvider) => {
     setProvider(next);
     localStorage.setItem("selected-provider", next);
+    if (projectPath) {
+      localStorage.setItem(`provider-${projectPath}`, next);
+    }
     setTimeout(() => textareaRef.current?.focus(), 100);
   };
 

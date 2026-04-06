@@ -161,6 +161,7 @@ export default function ChatMessagesPane({
           isTaskMasterInstalled={isTaskMasterInstalled}
           onShowAllTasks={onShowAllTasks}
           setInput={setInput}
+          projectPath={selectedProject?.fullPath || selectedProject?.path}
         />
       ) : (
         <>

@@ -148,14 +148,15 @@ export function useShellConnection({
               sessionId: isPlainShellRef.current ? null : selectedSessionRef.current?.id || null,
               hasSession: isPlainShellRef.current ? false : Boolean(selectedSessionRef.current),
               provider: isPlainShellRef.current ? 'plain-shell' : (() => {
-                // Use session.__provider for correctly-tagged providers (cursor, codex, gemini).
-                // For 'claude' sessions, fall back to localStorage — MangoCode sessions are
-                // stored in ~/.claude/projects/ and get tagged as 'claude' by discovery,
-                // but localStorage correctly tracks 'mangocode' vs 'claude'.
                 const sessionProv = selectedSessionRef.current?.__provider;
-                return (sessionProv && sessionProv !== 'claude')
-                  ? sessionProv
-                  : (localStorage.getItem('selected-provider') || 'claude');
+                // Use session.__provider for correctly-tagged providers (cursor, codex, gemini)
+                if (sessionProv && sessionProv !== 'claude') return sessionProv;
+                // For 'claude' sessions, check per-project provider first (set by provider picker),
+                // then global localStorage. This correctly distinguishes MangoCode vs Claude
+                // since MangoCode sessions are discovered as 'claude' from ~/.claude/projects/.
+                const projectPath = currentProject.fullPath || currentProject.path || '';
+                const projectProvider = projectPath ? localStorage.getItem(`provider-${projectPath}`) : null;
+                return projectProvider || localStorage.getItem('selected-provider') || 'claude';
               })(),
               cols: currentTerminal.cols,
               rows: currentTerminal.rows,
