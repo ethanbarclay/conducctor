@@ -151,7 +151,7 @@ export class ProcessManager extends EventEmitter {
       const cliBinary = isGemini ? 'gemini' : isMango ? 'mangocode' : 'claude'
       const args = ['--output-format', 'stream-json']
 
-      if (!isGemini) args.push('--verbose')
+      if (!isGemini && !isMango) args.push('--verbose')
 
       // MangoCode provider flag (e.g. google-vertex)
       if (isMango) {
@@ -278,8 +278,9 @@ export class ProcessManager extends EventEmitter {
 
         childProc.stderr.on('data', (chunk) => {
           const text = chunk.toString()
-          // Filter out noisy startup messages from Gemini CLI
+          // Filter out noisy startup/debug messages from Gemini and MangoCode
           if (text.includes('YOLO mode') || text.includes('STARTUP') || text.includes('cleanup_ops') || text.includes('Skipping metrics')) return
+          if (text.includes('DEBUG') || text.includes('INFO') || text.includes('Connecting to MCP') || text.includes('MCP server connected') || text.includes('Plugins loaded') || text.includes('Cron scheduler') || text.includes('Dispatching to') || text.includes('starting new connection') || text.includes('connecting to') || text.includes('connected to')) return
           this.emit('agent:error', { agentId, error: text })
         })
 
