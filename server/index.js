@@ -49,6 +49,7 @@ import { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getAct
 import { spawnCursor, abortCursorSession, isCursorSessionActive, getActiveCursorSessions } from './cursor-cli.js';
 import { queryCodex, abortCodexSession, isCodexSessionActive, getActiveCodexSessions } from './openai-codex.js';
 import { spawnGemini, abortGeminiSession, isGeminiSessionActive, getActiveGeminiSessions } from './gemini-cli.js';
+import { spawnMangoCode, abortMangoSession, isMangoSessionActive, getActiveMangoSessions } from './mangocode-cli.js';
 import { queryClaudeContainerized, abortContainerizedSession } from './conductor-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
@@ -1602,10 +1603,10 @@ function handleChatConnection(ws, request) {
                 const msgProvider = data.options?.provider || 'claude';
                 const useContainer = data.options?.useContainer !== false;
 
-                // MangoCode always goes through conductor bridge (no SDK fallback)
+                // MangoCode uses its own spawn function (like Gemini)
                 if (msgProvider === 'mangocode') {
-                    console.log('🥭 MangoCode agent');
-                    await queryClaudeContainerized(data.command, { ...data.options, useContainer: false }, writer, conductor);
+                    console.log('🥭 MangoCode');
+                    await spawnMangoCode(data.command, data.options, writer);
                 } else if (useContainer) {
                     console.log('🐳 Container: YES (isolated)');
                     await queryClaudeContainerized(data.command, data.options, writer, conductor);
@@ -1668,6 +1669,8 @@ function handleChatConnection(ws, request) {
                     success = abortCodexSession(data.sessionId);
                 } else if (provider === 'gemini') {
                     success = abortGeminiSession(data.sessionId);
+                } else if (provider === 'mangocode') {
+                    success = abortMangoSession(data.sessionId);
                 } else {
                     // Try conductor agents first, then SDK sessions
                     const conductorAgent = conductor.processManager.list().find(a => a.agentId === data.sessionId || a.sessionId === data.sessionId);
@@ -1708,6 +1711,8 @@ function handleChatConnection(ws, request) {
                     isActive = isCodexSessionActive(sessionId);
                 } else if (provider === 'gemini') {
                     isActive = isGeminiSessionActive(sessionId);
+                } else if (provider === 'mangocode') {
+                    isActive = isMangoSessionActive(sessionId);
                 } else {
                     // Check conductor agents (only if busy), then SDK
                     const conductorBusy = conductor.processManager.list().some(a => (a.agentId === sessionId || a.sessionId === sessionId) && a.busy);
@@ -1940,24 +1945,19 @@ function handleShellConnection(ws) {
                     } else if (provider === 'mangocode') {
                         const command = initialCommand || 'mangocode';
                         const envPrefix = 'PATH=$HOME/google-cloud-sdk/bin:$PATH VERTEX_PROJECT_ID=projectpee VERTEX_LOCATION=us-central1 VERTEX_AUTH_MODE=gcloud CONDUCCTOR_SHELL=1 MANGOCODE_IMAGE_PROTOCOL=text';
-                        // MangoCode now stores sessions at ~/.claude/projects/ (same as CC)
-                        // so the standard session ID from the sidebar should work
+                        // Resume session if available (same pattern as Claude)
                         if (hasSession && sessionId) {
-                            shellCommand = `${envPrefix} ${command} --resume "${sessionId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
+                            // Check session manager for CLI session ID mapping
+                            let resumeId = sessionId;
+                            try {
+                                const sess = sessionManager.getSession(sessionId);
+                                if (sess && sess.cliSessionId) {
+                                    resumeId = sess.cliSessionId;
+                                }
+                            } catch {}
+                            shellCommand = `${envPrefix} ${command} --resume "${resumeId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
                         } else {
-                            // Try conductor ProcessManager for the latest session
-                            let mangoResumeId = null;
-                            const mangoAgent = conductor.processManager.list()
-                                .filter(a => a.sessionId)
-                                .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0];
-                            if (mangoAgent?.sessionId) {
-                                mangoResumeId = mangoAgent.sessionId;
-                            }
-                            if (mangoResumeId) {
-                                shellCommand = `${envPrefix} ${command} --resume "${mangoResumeId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
-                            } else {
-                                shellCommand = `${envPrefix} ${command} --provider google-vertex`;
-                            }
+                            shellCommand = `${envPrefix} ${command} --provider google-vertex`;
                         }
                     } else {
                         // Claude (default provider)
