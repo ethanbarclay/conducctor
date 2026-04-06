@@ -43,6 +43,15 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
       return;
     }
 
+    // Only switch provider for genuinely different providers (claude, cursor, codex, gemini).
+    // Don't overwrite localStorage when the session was discovered as 'claude' but the user
+    // explicitly selected a different provider (e.g. mangocode) — MangoCode sessions are stored
+    // in the Claude session directory and get tagged as 'claude' by the discovery code.
+    const savedProvider = localStorage.getItem('selected-provider');
+    if (savedProvider === 'mangocode' && selectedSession.__provider === 'claude') {
+      return;
+    }
+
     setProvider(selectedSession.__provider);
     localStorage.setItem('selected-provider', selectedSession.__provider);
   }, [provider, selectedSession]);

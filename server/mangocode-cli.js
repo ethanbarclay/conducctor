@@ -117,7 +117,7 @@ async function spawnMangoCode(command, options = {}, ws) {
             exitCode: code,
             isNewSession: !sessionId && !!command,
             sessionId: capturedSessionId,
-            provider: 'claude', // Present as claude for UI compatibility
+            provider: 'mangocode',
         }));
     });
 
@@ -126,7 +126,7 @@ async function spawnMangoCode(command, options = {}, ws) {
             kind: 'error',
             content: `MangoCode failed: ${err.message}`,
             sessionId: capturedSessionId,
-            provider: 'claude',
+            provider: 'mangocode',
         }));
     });
 }
@@ -142,7 +142,7 @@ function handleMangoEvent(event, ws, currentSessionId, sessionCreatedSent, onSes
                 kind: 'session_created',
                 newSessionId: event.session_id,
                 sessionId: event.session_id,
-                provider: 'claude',
+                provider: 'mangocode',
             }));
         }
         return;
@@ -154,8 +154,7 @@ function handleMangoEvent(event, ws, currentSessionId, sessionCreatedSent, onSes
         if (event.parent_tool_use_id && !msg.parentToolUseId) {
             msg.parentToolUseId = event.parent_tool_use_id;
         }
-        // Override provider to claude for UI compatibility
-        msg.provider = 'claude';
+        msg.provider = 'mangocode';
         ws.send(msg);
     }
 
@@ -172,7 +171,7 @@ function handleMangoEvent(event, ws, currentSessionId, sessionCreatedSent, onSes
                     text: 'token_budget',
                     tokenBudget: { used, total: contextWindow },
                     sessionId: sid,
-                    provider: 'claude',
+                    provider: 'mangocode',
                 }));
             }
         }
