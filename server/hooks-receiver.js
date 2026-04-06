@@ -53,7 +53,9 @@ export function createHooksReceiver({ db, broadcastFn }) {
         ...extra
       } = req.body
 
-      const eventName = hook_event_name || req.body.hookEventName || 'unknown'
+      // MangoCode uses 'event' and 'tool_output'; Claude uses 'hook_event_name' and 'tool_response'
+      const eventName = hook_event_name || req.body.hookEventName || req.body.event || 'unknown'
+      const toolOutput = tool_response || req.body.tool_output
 
       insertStmt.run(
         agent_id || req.headers['x-agent-id'] || null,
@@ -61,7 +63,7 @@ export function createHooksReceiver({ db, broadcastFn }) {
         eventName,
         tool_name || null,
         tool_input ? JSON.stringify(tool_input) : null,
-        tool_response ? JSON.stringify(tool_response).slice(0, 10000) : null,
+        toolOutput ? JSON.stringify(toolOutput).slice(0, 10000) : null,
         JSON.stringify({ message, source, ...extra }),
       )
 
@@ -73,7 +75,7 @@ export function createHooksReceiver({ db, broadcastFn }) {
           hookEvent: eventName,
           toolName: tool_name,
           toolInput: tool_input,
-          toolOutput: tool_response ? String(tool_response).slice(0, 500) : null,
+          toolOutput: toolOutput ? String(toolOutput).slice(0, 500) : null,
           message,
           source,
           timestamp: Date.now(),

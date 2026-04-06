@@ -9,10 +9,13 @@
 
 import { spawn } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import os from 'os';
 import sessionManager from './sessionManager.js';
 import { createNormalizedMessage } from './providers/types.js';
 import { claudeAdapter } from './providers/claude/adapter.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let activeMangoProcesses = new Map();
 
@@ -46,10 +49,23 @@ async function spawnMangoCode(command, options = {}, ws) {
         args.push('--resume', resumeId);
     }
 
+    // Hook settings for observability — same hook-relay.sh as Claude
+    const relayPath = path.join(__dirname, 'hook-relay.sh');
+    const hookEvents = ['PreToolUse', 'PostToolUse', 'PostModelTurn', 'Stop'];
+    const hooks = {};
+    for (const event of hookEvents) {
+        hooks[event] = [{ matcher: '', hooks: [relayPath] }];
+    }
+    args.push('--settings', JSON.stringify({ hooks }));
+
     // Prompt
     if (command && command.trim()) {
         args.push('-p', command);
     }
+
+    // Agent ID for hook relay
+    const processKey = sessionId || `mango-${Date.now()}`;
+    const agentId = processKey;
 
     // Environment
     const env = {
@@ -58,6 +74,8 @@ async function spawnMangoCode(command, options = {}, ws) {
         VERTEX_PROJECT_ID: process.env.VERTEX_PROJECT_ID || 'projectpee',
         VERTEX_LOCATION: process.env.VERTEX_LOCATION || 'us-central1',
         VERTEX_AUTH_MODE: process.env.VERTEX_AUTH_MODE || 'gcloud',
+        CONDUCTOR_AGENT_ID: agentId,
+        CONDUCTOR_HOOKS_URL: `http://localhost:${process.env.SERVER_PORT || 3001}/api/conductor/hooks`,
     };
 
     console.log('[MangoCode] Spawning:', 'mangocode', args.join(' '));
@@ -69,7 +87,6 @@ async function spawnMangoCode(command, options = {}, ws) {
     });
 
     // Track process
-    const processKey = sessionId || `mango-${Date.now()}`;
     activeMangoProcesses.set(processKey, { process: proc, aborted: false });
 
     let buffer = '';
