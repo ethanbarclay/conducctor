@@ -86,6 +86,8 @@ async function spawnMangoCode(command, options = {}, ws) {
                 handleMangoEvent(event, ws, capturedSessionId, sessionCreatedSent, (newId) => {
                     capturedSessionId = newId;
                     sessionCreatedSent = true;
+                    // Update writer session ID so subsequent messages are tagged correctly
+                    if (ws.setSessionId) ws.setSessionId(newId);
                     // Register with session manager
                     sessionManager.addSession(capturedSessionId, {
                         cliSessionId: newId,
