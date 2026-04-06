@@ -350,15 +350,37 @@ export function useConductorWebSocket() {
         type: eventType,
         content,
         timestamp: (data.timestamp as number) || Date.now(),
+        toolName,
       };
 
-      setState((prev) => ({
-        ...prev,
-        agentEvents: {
-          ...prev.agentEvents,
-          [agentId]: [...(prev.agentEvents[agentId] || []), newEvent].slice(-50),
-        },
-      }));
+      setState((prev) => {
+        // Auto-register agent if not already known (e.g., MangoCode chat sessions
+        // that aren't spawned via ProcessManager but still emit hook events)
+        const knownAgent = prev.agents.find((a) => a.agentId === agentId);
+        const agents = knownAgent
+          ? prev.agents
+          : [
+              ...prev.agents,
+              {
+                agentId,
+                role: 'mangocode',
+                projectId: '',
+                startedAt: Date.now(),
+                tokenUsage: { input: 0, output: 0 },
+                status: 'running' as const,
+                contextPct: 0,
+              },
+            ];
+
+        return {
+          ...prev,
+          agents,
+          agentEvents: {
+            ...prev.agentEvents,
+            [agentId]: [...(prev.agentEvents[agentId] || []), newEvent].slice(-50),
+          },
+        };
+      });
     }
   }, []);
 
