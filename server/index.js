@@ -1804,7 +1804,7 @@ function handleShellConnection(ws) {
                 const commandSuffix = isPlainShell && initialCommand
                     ? `_cmd_${Buffer.from(initialCommand).toString('base64').slice(0, 16)}`
                     : '';
-                ptySessionKey = `${projectPath}_${sessionId || 'default'}${commandSuffix}`;
+                ptySessionKey = `${projectPath}_${provider}_${sessionId || 'default'}${commandSuffix}`;
 
                 // Kill any existing login session before starting fresh
                 if (isLoginCommand) {
