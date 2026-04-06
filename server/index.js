@@ -1824,7 +1824,22 @@ function handleShellConnection(ws) {
                     }
                 }
 
-                const existingSession = isLoginCommand ? null : ptySessionsMap.get(ptySessionKey);
+                let existingSession = isLoginCommand ? null : ptySessionsMap.get(ptySessionKey);
+                // Check if the PTY process is still alive — if it exited, clean up
+                // and spawn fresh (fixes blank shell when reconnecting to dead TUI processes)
+                if (existingSession && existingSession.pty) {
+                    try {
+                        // node-pty processes have a .pid property; check if still running
+                        const pid = existingSession.pty.pid;
+                        if (pid) process.kill(pid, 0); // signal 0 = existence check
+                    } catch {
+                        // Process doesn't exist — clean up stale entry
+                        console.log('🧹 PTY process dead, cleaning up:', ptySessionKey);
+                        if (existingSession.timeoutId) clearTimeout(existingSession.timeoutId);
+                        ptySessionsMap.delete(ptySessionKey);
+                        existingSession = null;
+                    }
+                }
                 if (existingSession) {
                     console.log('♻️  Reconnecting to existing PTY session:', ptySessionKey);
                     shellProcess = existingSession.pty;
