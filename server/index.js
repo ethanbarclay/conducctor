@@ -1939,7 +1939,7 @@ function handleShellConnection(ws) {
                         }
                     } else if (provider === 'mangocode') {
                         const command = initialCommand || 'mangocode';
-                        const envPrefix = 'PATH=$HOME/google-cloud-sdk/bin:$PATH CLAURST_VERTEX_PROJECT_ID=projectpee CLAURST_VERTEX_LOCATION=us-central1 CLAURST_VERTEX_AUTH_MODE=gcloud';
+                        const envPrefix = 'PATH=$HOME/google-cloud-sdk/bin:$PATH VERTEX_PROJECT_ID=projectpee VERTEX_LOCATION=us-central1 VERTEX_AUTH_MODE=gcloud';
                         // MangoCode now stores sessions at ~/.claude/projects/ (same as CC)
                         // so the standard session ID from the sidebar should work
                         if (hasSession && sessionId) {

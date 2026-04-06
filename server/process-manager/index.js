@@ -157,10 +157,10 @@ export class ProcessManager extends EventEmitter {
       if (isMango) {
         args.push('--provider', agent.mangoProvider || 'google-vertex')
         // Ensure Vertex env vars are set for the process
-        if (!process.env.CLAURST_VERTEX_PROJECT_ID) {
-          process.env.CLAURST_VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'projectpee'
-          process.env.CLAURST_VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'us-central1'
-          process.env.CLAURST_VERTEX_AUTH_MODE = 'gcloud'
+        if (!process.env.VERTEX_PROJECT_ID) {
+          process.env.VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'projectpee'
+          process.env.VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'us-central1'
+          process.env.VERTEX_AUTH_MODE = 'gcloud'
         }
       }
 
