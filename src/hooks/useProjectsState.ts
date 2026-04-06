@@ -311,15 +311,17 @@ export function useProjectsState({
     for (const project of projects) {
       const claudeSession = project.sessions?.find((session) => session.id === sessionId);
       if (claudeSession) {
+        // MangoCode sessions stored in ~/.claude/projects/ have provider: "mangocode"
+        const sessionProvider = (claudeSession as any).provider === 'mangocode' ? 'mangocode' : 'claude';
         const shouldUpdateProject = selectedProject?.name !== project.name;
         const shouldUpdateSession =
-          selectedSession?.id !== sessionId || selectedSession.__provider !== 'claude';
+          selectedSession?.id !== sessionId || selectedSession.__provider !== sessionProvider;
 
         if (shouldUpdateProject) {
           setSelectedProject(project);
         }
         if (shouldUpdateSession) {
-          setSelectedSession({ ...claudeSession, __provider: 'claude' });
+          setSelectedSession({ ...claudeSession, __provider: sessionProvider as any });
         }
         return;
       }

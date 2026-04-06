@@ -817,6 +817,11 @@ async function parseJsonlSessions(filePath) {
               session.summary = entry.summary;
             }
 
+            // Track provider if specified (MangoCode writes provider: "mangocode")
+            if (entry.provider && !session.provider) {
+              session.provider = entry.provider;
+            }
+
             // Track last user and assistant messages (skip system messages)
             if (entry.message?.role === 'user' && entry.message?.content) {
               const content = entry.message.content;
