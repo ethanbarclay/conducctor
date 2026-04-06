@@ -1863,6 +1863,12 @@ function handleShellConnection(ws) {
 
                     existingSession.ws = ws;
 
+                    // Force TUI apps (ratatui, etc.) to redraw by sending a resize event.
+                    // Without this, the alternate screen buffer appears blank on reconnect.
+                    const termCols = data.cols || 80;
+                    const termRows = data.rows || 24;
+                    try { shellProcess.resize(termCols, termRows); } catch {}
+
                     return;
                 }
 
