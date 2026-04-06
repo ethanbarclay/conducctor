@@ -181,12 +181,10 @@ export class ProcessManager extends EventEmitter {
           args.push('--dangerously-skip-permissions')
         }
 
-        // Hook settings for observability (Claude only — MangoCode doesn't support --settings)
-        if (!isMango) {
-          const hookSettings = this._buildHookSettings(agent)
-          if (hookSettings) {
-            args.push('--settings', hookSettings)
-          }
+        // Hook settings for observability (Claude + MangoCode)
+        const hookSettings = this._buildHookSettings(agent)
+        if (hookSettings) {
+          args.push('--settings', hookSettings)
         }
 
         // Allowed tools (Claude only — Gemini uses --yolo)

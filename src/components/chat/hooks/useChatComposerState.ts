@@ -659,7 +659,7 @@ export function useChatComposerState({
             model: mangoModel,
             sessionSummary,
             images: uploadedImages,
-            useContainer: false, // MangoCode runs locally (no Docker image yet)
+            useContainer: true,
             provider: 'mangocode',
           },
         });

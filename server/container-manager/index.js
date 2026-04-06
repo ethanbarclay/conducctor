@@ -79,6 +79,16 @@ export class ContainerManager extends EventEmitter {
       // Pass through API keys if set
       ...(process.env.ANTHROPIC_API_KEY ? ['--env', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`] : []),
       ...(process.env.GEMINI_API_KEY ? ['--env', `GEMINI_API_KEY=${process.env.GEMINI_API_KEY}`] : []),
+      // MangoCode Vertex credentials
+      ...(isMango ? [
+        '--env', `VERTEX_PROJECT_ID=${process.env.VERTEX_PROJECT_ID || 'projectpee'}`,
+        '--env', `VERTEX_LOCATION=${process.env.VERTEX_LOCATION || 'us-central1'}`,
+        '--env', `VERTEX_AUTH_MODE=${process.env.VERTEX_AUTH_MODE || 'gcloud'}`,
+        '-v', `${home}/google-cloud-sdk:${home}/google-cloud-sdk:ro`,
+        '-v', `${home}/.config/gcloud:${home}/.config/gcloud:ro`,
+        '--env', `PATH=${home}/google-cloud-sdk/bin:/usr/local/bin:/usr/bin:/bin`,
+        '-v', `${home}/.mangocode:${home}/.mangocode:rw`,
+      ] : []),
       // Working directory — use real host path so CLI cwd matches
       '--workdir', projectPath || '/workspace',
       containerImage,

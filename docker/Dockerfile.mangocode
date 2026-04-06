@@ -1,6 +1,6 @@
 FROM rust:latest AS builder
 
-RUN apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev libasound2-dev git && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 RUN git clone --depth 1 https://github.com/coqui123/MangoCode.git . && \
@@ -10,11 +10,11 @@ RUN git clone --depth 1 https://github.com/coqui123/MangoCode.git . && \
 
 FROM debian:bookworm-slim
 
-RUN apt-get update -qq && apt-get install -y -qq ca-certificates curl git procps && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && apt-get install -y -qq ca-certificates curl git procps libasound2 && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/mangocode /usr/local/bin/mangocode
 
-RUN mkdir -p /workspace /home/node/.claude && \
+RUN mkdir -p /workspace /home/node/.claude /home/node/.mangocode && \
     groupadd -r node && useradd -r -g node -m -d /home/node node && \
     chown -R node:node /home/node /workspace
 
