@@ -8,7 +8,7 @@ RUN git clone --depth 1 https://github.com/coqui123/MangoCode.git . && \
     cargo build --release -p mangocode && \
     cp target/release/mangocode /usr/local/bin/mangocode
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update -qq && apt-get install -y -qq ca-certificates curl git procps libasound2 && rm -rf /var/lib/apt/lists/*
 
