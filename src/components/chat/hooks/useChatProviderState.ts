@@ -43,6 +43,14 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
       return;
     }
 
+    // Don't overwrite 'mangocode' in localStorage when a MangoCode session
+    // (stored in ~/.claude/projects/, tagged as 'claude') is selected.
+    // Genuine cross-project switches (e.g., claude→gemini) still sync normally.
+    const savedProvider = localStorage.getItem('selected-provider');
+    if (savedProvider === 'mangocode' && selectedSession.__provider === 'claude') {
+      return;
+    }
+
     setProvider(selectedSession.__provider);
     localStorage.setItem('selected-provider', selectedSession.__provider);
   }, [provider, selectedSession]);
