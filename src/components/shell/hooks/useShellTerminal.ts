@@ -181,9 +181,14 @@ export function useShellTerminal({
           navigator.clipboard
             .readText()
             .then((text) => {
+              // Wrap in bracketed paste sequences when the PTY app has
+              // enabled bracketed paste mode (e.g. Claude Code, MangoCode).
+              const data = nextTerminal.modes.bracketedPasteMode
+                ? `\x1b[200~${text}\x1b[201~`
+                : text;
               sendSocketMessage(wsRef.current, {
                 type: 'input',
-                data: text,
+                data,
               });
             })
             .catch(() => {});

@@ -80,12 +80,15 @@ export default function TerminalShortcutsPanel({
     try {
       const text = await navigator.clipboard.readText();
       if (text.length > 0) {
-        sendInput(text);
+        const data = terminalRef.current?.modes.bracketedPasteMode
+          ? `\x1b[200~${text}\x1b[201~`
+          : text;
+        sendInput(data);
       }
     } catch {
       // Ignore clipboard permission errors.
     }
-  }, [sendInput]);
+  }, [sendInput, terminalRef]);
 
   const handleKeyPress = useCallback(
     (seq: string) => {
