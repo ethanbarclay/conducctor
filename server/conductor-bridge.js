@@ -30,6 +30,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
     useContainer = true,
     role = 'agent',
     provider = 'claude',
+    model,
+    mangoProvider: explicitMangoProvider,
     permissionMode,
     toolsSettings,
   } = options;
@@ -319,6 +321,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
   console.log(`[Conductor Bridge] Spawning agentId=${agentId} useContainer=${useContainer}`);
 
   try {
+    const mangoProvider = explicitMangoProvider || 'google-vertex';
+
     await processManager.spawn({
       prompt: command || undefined,
       projectId: workingDir,
@@ -326,6 +330,8 @@ export async function queryClaudeContainerized(command, options = {}, writer, co
       useContainer,
       role,
       provider,
+      model: model || undefined,
+      mangoProvider,
       agentId, // pass pre-generated ID
       permissionMode,
       allowedTools: toolsSettings?.allowedTools,

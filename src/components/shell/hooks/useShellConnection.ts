@@ -160,6 +160,7 @@ export function useShellConnection({
                 // for unseeded projects — correct for real Claude sessions)
                 return sessionProv || localStorage.getItem('selected-provider') || 'claude';
               })(),
+              model: localStorage.getItem('mangocode-model') || null,
               cols: currentTerminal.cols,
               rows: currentTerminal.rows,
               initialCommand: initialCommandRef.current,

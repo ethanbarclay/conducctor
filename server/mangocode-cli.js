@@ -28,13 +28,13 @@ async function spawnMangoCode(command, options = {}, ws) {
     const workingDir = projectPath || cwd || process.cwd();
 
     // Build args
-    const args = ['--output-format', 'stream-json', '--provider', 'google-vertex'];
+    const args = ['--output-format', 'stream-json'];
 
-    // Model
+    // Model and provider — use explicit mangoProvider from frontend
     const model = options.model || 'google/gemini-2.5-pro';
-    if (model) {
-        args.push('--model', model);
-    }
+    const mcProvider = options.mangoProvider || 'google-vertex';
+    args.push('--provider', mcProvider);
+    args.push('--model', model);
 
     // Permission mode
     if (permissionMode === 'bypassPermissions' || toolsSettings?.skipPermissions) {

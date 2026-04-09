@@ -92,16 +92,55 @@ export const GEMINI_MODELS = {
 };
 
 /**
- * MangoCode Models (same as Claude — Rust CC reimplementation)
+ * MangoCode Models (Rust CC reimplementation — multi-provider)
+ *
+ * Value format: "mangoProvider:publisherPrefix/modelId"
+ *   e.g. "google-vertex:anthropic/claude-opus-4-6"
+ * The part before the colon is the MangoCode --provider flag.
+ * The part after the colon is the MangoCode --model flag.
  */
 export const MANGOCODE_MODELS = {
   OPTIONS: [
-    { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
-    { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-    { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-    { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet" },
-    { value: "anthropic/claude-opus-4-6", label: "Claude Opus" },
+    // Google Vertex AI
+    { value: "google-vertex:google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", provider: "google-vertex" },
+    { value: "google-vertex:google/gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "google-vertex" },
+    { value: "google-vertex:google/gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "google-vertex" },
+    // TODO: Enable when Vertex Anthropic Messages API is supported in MangoCode
+    // { value: "google-vertex:anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Vertex)", provider: "google-vertex" },
+    // { value: "google-vertex:anthropic/claude-opus-4-6", label: "Claude Opus 4.6 (Vertex)", provider: "google-vertex" },
+    // TODO: Enable when ANTHROPIC_API_KEY is configured
+    // { value: "anthropic:claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "anthropic" },
+    // { value: "anthropic:claude-opus-4-6", label: "Claude Opus 4.6", provider: "anthropic" },
+    // TODO: Enable when OPENAI_API_KEY is configured
+    // { value: "openai:gpt-4o", label: "GPT-4o", provider: "openai" },
+    // { value: "openai:o3", label: "o3", provider: "openai" },
+    // TODO: Enable when Ollama is running
+    // { value: "ollama:llama3", label: "Llama 3 (Local)", provider: "ollama" },
   ],
 
-  DEFAULT: "google/gemini-3.1-pro-preview",
+  PROVIDERS: {
+    "google-vertex": "Google Vertex AI",
+    // "anthropic": "Anthropic (Direct)",
+    // "openai": "OpenAI",
+    // "ollama": "Ollama (Local)",
+  },
+
+  DEFAULT: "google-vertex:google/gemini-2.5-pro",
 };
+
+/**
+ * Parse a MangoCode "provider:model" composite string.
+ * Returns { provider, model } with backward-compat for legacy bare model strings.
+ */
+export function parseMangocodeModel(composite) {
+  if (!composite) return { provider: 'google-vertex', model: 'google/gemini-2.5-pro' };
+  const colonIdx = composite.indexOf(':');
+  if (colonIdx === -1) {
+    // Legacy format without colon — default to google-vertex
+    return { provider: 'google-vertex', model: composite };
+  }
+  return {
+    provider: composite.slice(0, colonIdx),
+    model: composite.slice(colonIdx + 1),
+  };
+}

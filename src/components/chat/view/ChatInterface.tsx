@@ -71,6 +71,8 @@ function ChatInterface({
     setCodexModel,
     geminiModel,
     setGeminiModel,
+    mangocodeModel,
+    setMangocodeModel,
     permissionMode,
     pendingPermissionRequests,
     setPendingPermissionRequests,
@@ -181,6 +183,7 @@ function ChatInterface({
     claudeModel,
     codexModel,
     geminiModel,
+    mangocodeModel,
     isLoading,
     canAbortSession,
     tokenBudget,
@@ -314,6 +317,8 @@ function ChatInterface({
           setCodexModel={setCodexModel}
           geminiModel={geminiModel}
           setGeminiModel={setGeminiModel}
+          mangocodeModel={mangocodeModel}
+          setMangocodeModel={setMangocodeModel}
           tasksEnabled={tasksEnabled}
           isTaskMasterInstalled={isTaskMasterInstalled}
           onShowAllTasks={onShowAllTasks}

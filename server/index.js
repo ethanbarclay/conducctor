@@ -1973,6 +1973,18 @@ function handleShellConnection(ws) {
                     } else if (provider === 'mangocode') {
                         const command = initialCommand || 'mangocode';
                         const envPrefix = 'PATH=$HOME/google-cloud-sdk/bin:$PATH VERTEX_PROJECT_ID=projectpee VERTEX_LOCATION=us-central1 VERTEX_AUTH_MODE=gcloud CONDUCCTOR_SHELL=1 MANGOCODE_IMAGE_PROTOCOL=text';
+                        // Parse "provider:model" composite from frontend
+                        const rawModel = data.model || 'google-vertex:google/gemini-2.5-pro';
+                        let mcProvider, shellModel;
+                        const colonIdx = rawModel.indexOf(':');
+                        if (colonIdx !== -1) {
+                            mcProvider = rawModel.slice(0, colonIdx);
+                            shellModel = rawModel.slice(colonIdx + 1);
+                        } else {
+                            shellModel = rawModel;
+                            mcProvider = 'google-vertex';
+                        }
+                        const modelFlag = `--provider ${mcProvider} --model ${shellModel}`;
                         // Resume session if available (same pattern as Claude)
                         if (hasSession && sessionId) {
                             // Check session manager for CLI session ID mapping
@@ -1983,9 +1995,9 @@ function handleShellConnection(ws) {
                                     resumeId = sess.cliSessionId;
                                 }
                             } catch {}
-                            shellCommand = `${envPrefix} ${command} --resume "${resumeId}" --provider google-vertex || ${envPrefix} ${command} --provider google-vertex`;
+                            shellCommand = `${envPrefix} ${command} --resume "${resumeId}" ${modelFlag} || ${envPrefix} ${command} ${modelFlag}`;
                         } else {
-                            shellCommand = `${envPrefix} ${command} --provider google-vertex`;
+                            shellCommand = `${envPrefix} ${command} ${modelFlag}`;
                         }
                     } else {
                         // Claude (default provider)

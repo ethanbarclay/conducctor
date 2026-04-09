@@ -26,6 +26,8 @@ type ProviderSelectionEmptyStateProps = {
   setCodexModel: (model: string) => void;
   geminiModel: string;
   setGeminiModel: (model: string) => void;
+  mangocodeModel: string;
+  setMangocodeModel: (model: string) => void;
   tasksEnabled: boolean;
   isTaskMasterInstalled: boolean | null;
   onShowAllTasks?: (() => void) | null;
@@ -99,8 +101,10 @@ function getModelValue(
   cu: string,
   co: string,
   g: string,
+  m?: string,
 ) {
   if (p === "claude") return c;
+  if (p === "mangocode") return m ?? c;
   if (p === "codex") return co;
   if (p === "gemini") return g;
   return cu;
@@ -120,6 +124,8 @@ export default function ProviderSelectionEmptyState({
   setCodexModel,
   geminiModel,
   setGeminiModel,
+  mangocodeModel,
+  setMangocodeModel,
   tasksEnabled,
   isTaskMasterInstalled,
   onShowAllTasks,
@@ -141,9 +147,12 @@ export default function ProviderSelectionEmptyState({
   };
 
   const handleModelChange = (value: string) => {
-    if (provider === "claude" || provider === "mangocode") {
+    if (provider === "mangocode") {
+      setMangocodeModel(value);
+      localStorage.setItem("mangocode-model", value);
+    } else if (provider === "claude") {
       setClaudeModel(value);
-      localStorage.setItem(provider === "mangocode" ? "mangocode-model" : "claude-model", value);
+      localStorage.setItem("claude-model", value);
     } else if (provider === "codex") {
       setCodexModel(value);
       localStorage.setItem("codex-model", value);
@@ -163,6 +172,7 @@ export default function ProviderSelectionEmptyState({
     cursorModel,
     codexModel,
     geminiModel,
+    mangocodeModel,
   );
 
   /* ── New session — provider picker ── */
@@ -239,13 +249,31 @@ export default function ProviderSelectionEmptyState({
                   tabIndex={-1}
                   className="cursor-pointer appearance-none rounded-lg border border-border/60 bg-muted/50 py-1.5 pl-3 pr-7 text-sm font-medium text-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  {modelConfig.OPTIONS.map(
-                    ({ value, label }: { value: string; label: string }) => (
-                      <option key={value + label} value={value}>
-                        {label}
-                      </option>
-                    ),
-                  )}
+                  {provider === "mangocode" && MANGOCODE_MODELS.PROVIDERS
+                    ? Object.entries(MANGOCODE_MODELS.PROVIDERS).map(
+                        ([providerId, providerLabel]: [string, string]) => {
+                          const opts = MANGOCODE_MODELS.OPTIONS.filter(
+                            (o: { provider?: string }) => o.provider === providerId,
+                          );
+                          if (opts.length === 0) return null;
+                          return (
+                            <optgroup key={providerId} label={providerLabel as string}>
+                              {opts.map(({ value, label }: { value: string; label: string }) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        },
+                      )
+                    : modelConfig.OPTIONS.map(
+                        ({ value, label }: { value: string; label: string }) => (
+                          <option key={value + label} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
               </div>
@@ -265,6 +293,10 @@ export default function ProviderSelectionEmptyState({
                   }),
                   gemini: t("providerSelection.readyPrompt.gemini", {
                     model: geminiModel,
+                  }),
+                  mangocode: t("providerSelection.readyPrompt.mangocode", {
+                    model: MANGOCODE_MODELS.OPTIONS.find((o: { value: string }) => o.value === mangocodeModel)?.label || mangocodeModel,
+                    defaultValue: `Using ${MANGOCODE_MODELS.OPTIONS.find((o: { value: string }) => o.value === mangocodeModel)?.label || mangocodeModel}`,
                   }),
                 }[provider]
               }

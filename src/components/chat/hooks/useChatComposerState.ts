@@ -644,8 +644,11 @@ export function useChatComposerState({
           },
         });
       } else if (provider === 'mangocode') {
-        // MangoCode via Vertex — use Gemini model, not Claude model
-        const mangoModel = localStorage.getItem('mangocode-model') || 'google/gemini-2.5-pro';
+        // MangoCode — parse "provider:model" composite from localStorage
+        const mangoComposite = localStorage.getItem('mangocode-model') || 'google-vertex:google/gemini-2.5-pro';
+        const colonIdx = mangoComposite.indexOf(':');
+        const mangoProvider = colonIdx !== -1 ? mangoComposite.slice(0, colonIdx) : 'google-vertex';
+        const mangoModel = colonIdx !== -1 ? mangoComposite.slice(colonIdx + 1) : mangoComposite;
         sendMessage({
           type: 'claude-command',
           command: messageContent,
@@ -657,6 +660,7 @@ export function useChatComposerState({
             toolsSettings,
             permissionMode,
             model: mangoModel,
+            mangoProvider,
             sessionSummary,
             images: uploadedImages,
             useContainer: true,
