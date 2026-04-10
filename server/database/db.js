@@ -148,6 +148,25 @@ const runMigrations = () => {
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_session_names_lookup ON session_names(session_id, provider)');
 
+    // Session provenance: tracks how a session was created (user chat, manual agent,
+    // scheduled task, or spawned by another agent via the MCP broker). Populated
+    // only for agent-spawned sessions; absence of a row means "plain user chat".
+    db.exec(`CREATE TABLE IF NOT EXISTS session_provenance (
+      session_id          TEXT PRIMARY KEY,
+      origin              TEXT NOT NULL,
+      role                TEXT,
+      agent_id            TEXT,
+      parent_session_id   TEXT,
+      parent_agent_id     TEXT,
+      parent_role         TEXT,
+      scheduled_task_id   INTEGER,
+      scheduled_task_name TEXT,
+      project_id          TEXT,
+      created_at          INTEGER NOT NULL
+    )`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_session_provenance_project ON session_provenance(project_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_session_provenance_parent ON session_provenance(parent_session_id)');
+
     console.log('Database migrations completed successfully');
   } catch (error) {
     console.error('Error running migrations:', error.message);
@@ -554,6 +573,68 @@ const sessionNamesDb = {
   },
 };
 
+// Session provenance — tracks how an agent-backed session was created.
+const sessionProvenanceDb = {
+  // Upsert a provenance row. Called when a spawned agent's sessionId becomes known.
+  record: ({
+    sessionId,
+    origin,
+    role = null,
+    agentId = null,
+    parentSessionId = null,
+    parentAgentId = null,
+    parentRole = null,
+    scheduledTaskId = null,
+    scheduledTaskName = null,
+    projectId = null,
+  }) => {
+    if (!sessionId || !origin) return;
+    try {
+      db.prepare(`
+        INSERT INTO session_provenance (
+          session_id, origin, role, agent_id,
+          parent_session_id, parent_agent_id, parent_role,
+          scheduled_task_id, scheduled_task_name,
+          project_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+          origin              = excluded.origin,
+          role                = COALESCE(excluded.role, session_provenance.role),
+          agent_id            = COALESCE(excluded.agent_id, session_provenance.agent_id),
+          parent_session_id   = COALESCE(excluded.parent_session_id, session_provenance.parent_session_id),
+          parent_agent_id     = COALESCE(excluded.parent_agent_id, session_provenance.parent_agent_id),
+          parent_role         = COALESCE(excluded.parent_role, session_provenance.parent_role),
+          scheduled_task_id   = COALESCE(excluded.scheduled_task_id, session_provenance.scheduled_task_id),
+          scheduled_task_name = COALESCE(excluded.scheduled_task_name, session_provenance.scheduled_task_name),
+          project_id          = COALESCE(excluded.project_id, session_provenance.project_id)
+      `).run(
+        sessionId, origin, role, agentId,
+        parentSessionId, parentAgentId, parentRole,
+        scheduledTaskId, scheduledTaskName,
+        projectId, Math.floor(Date.now() / 1000),
+      );
+    } catch (err) {
+      console.warn('[DB] Failed to record session provenance:', err.message);
+    }
+  },
+
+  // Return all provenance rows (keyed by sessionId client-side).
+  listAll: () => {
+    try {
+      return db.prepare(`
+        SELECT session_id, origin, role, agent_id,
+               parent_session_id, parent_agent_id, parent_role,
+               scheduled_task_id, scheduled_task_name,
+               project_id, created_at
+        FROM session_provenance
+      `).all();
+    } catch (err) {
+      console.warn('[DB] Failed to list session provenance:', err.message);
+      return [];
+    }
+  },
+};
+
 // Apply custom session names from the database (overrides CLI-generated summaries)
 function applyCustomSessionNames(sessions, provider) {
   if (!sessions?.length) return;
@@ -624,6 +705,7 @@ export {
   notificationPreferencesDb,
   pushSubscriptionsDb,
   sessionNamesDb,
+  sessionProvenanceDb,
   applyCustomSessionNames,
   appConfigDb,
   githubTokensDb // Backward compatibility

@@ -9,6 +9,7 @@
  */
 
 import { Router } from 'express';
+import { sessionProvenanceDb } from '../database/db.js';
 
 const router = Router();
 
@@ -49,6 +50,10 @@ router.post('/agents', async (req, res) => {
             mangoProvider: mangoProvider || undefined,
             model: model || undefined,
             permissionMode: permissionMode || undefined,
+            provenance: {
+                origin: 'manual_agent',
+                role: role || 'agent',
+            },
         }).catch(err => {
             console.error(`[Conductor] Agent ${agentId} spawn error:`, err.message);
         });
@@ -71,6 +76,21 @@ router.post('/agents', async (req, res) => {
 router.get('/agents', (req, res) => {
     const { processManager } = getConductor(req);
     res.json({ agents: processManager.list() });
+});
+
+/**
+ * GET /api/conductor/session-provenance
+ * Returns provenance rows for all agent-spawned sessions. Sessions without
+ * a row are plain user chats. Used by the sidebar to badge conversations.
+ */
+router.get('/session-provenance', (_req, res) => {
+    try {
+        const rows = sessionProvenanceDb.listAll();
+        res.json({ provenance: rows });
+    } catch (err) {
+        console.error('[Conductor] session-provenance error:', err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 /**

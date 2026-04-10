@@ -335,6 +335,13 @@ export class MCPBroker extends EventEmitter {
           useContainer: callerAgent?.useContainer ?? false,
           permissionMode: callerAgent?.permissionMode || 'bypassPermissions',
           model: callerAgent?.model || null,
+          provenance: {
+            origin: 'mcp_spawn',
+            role,
+            parentAgentId: fromAgentId,
+            parentSessionId: callerAgent?.sessionId || null,
+            parentRole: callerAgent?.role || null,
+          },
         }).then(() => {
           // Sub-agent turn completed — notify the spawner
           console.log(`[MCP Broker] Sub-agent ${newAgentId} (${role}) completed, notifying spawner ${fromAgentId}`)

@@ -130,6 +130,12 @@ export class Scheduler extends EventEmitter {
         role: task.agent_role,
         useContainer: !!task.use_container,
         permissionMode: 'bypassPermissions',
+        provenance: {
+          origin: 'scheduled',
+          role: task.agent_role,
+          scheduledTaskId: task.id,
+          scheduledTaskName: task.name,
+        },
       })
 
       this.db.prepare('UPDATE task_runs SET agent_id = ? WHERE id = ?').run(agentId, runId)
@@ -203,6 +209,12 @@ export class Scheduler extends EventEmitter {
         projectId: task.project_id,
         role: task.agent_role,
         useContainer: !!task.use_container,
+        provenance: {
+          origin: 'scheduled',
+          role: task.agent_role,
+          scheduledTaskId: task.id,
+          scheduledTaskName: task.name,
+        },
       })
 
       this.db.prepare(

@@ -13,6 +13,7 @@ import { readdirSync, statSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
+import { sessionProvenanceDb } from '../database/db.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -51,7 +52,15 @@ export class ProcessManager extends EventEmitter {
       startedAt: Date.now(),
       tokenUsage: { input: 0, output: 0 },
       busy: false,
+      // Spawn provenance — written to session_provenance once sessionId arrives.
+      // Caller-supplied; absence means we won't record a row (treated as plain chat).
+      provenance: opts.provenance || null,
     })
+
+    // If a sessionId was supplied up-front (e.g. resuming) record provenance now.
+    if (opts.sessionId && opts.provenance) {
+      this._writeProvenance(agentId, opts.sessionId)
+    }
 
     this.emit('agent:spawned', { agentId, ...opts })
 
@@ -61,6 +70,26 @@ export class ProcessManager extends EventEmitter {
     }
 
     return agentId
+  }
+
+  /**
+   * Write the agent's pending provenance row to SQLite. Idempotent — uses upsert.
+   */
+  _writeProvenance(agentId, sessionId) {
+    const agent = this.agents.get(agentId)
+    if (!agent || !agent.provenance || !sessionId) return
+    sessionProvenanceDb.record({
+      sessionId,
+      origin: agent.provenance.origin,
+      role: agent.provenance.role ?? agent.role,
+      agentId,
+      parentSessionId: agent.provenance.parentSessionId,
+      parentAgentId: agent.provenance.parentAgentId,
+      parentRole: agent.provenance.parentRole,
+      scheduledTaskId: agent.provenance.scheduledTaskId,
+      scheduledTaskName: agent.provenance.scheduledTaskName,
+      projectId: agent.projectId || agent.provenance.projectId,
+    })
   }
 
   /**
@@ -298,6 +327,7 @@ export class ProcessManager extends EventEmitter {
                 .sort((a, b) => b.mtime - a.mtime)
               if (files.length > 0) {
                 agent.sessionId = files[0].name.replace('.json', '')
+                this._writeProvenance(agentId, agent.sessionId)
               }
             } catch { /* ignore */ }
           }
@@ -381,6 +411,8 @@ export class ProcessManager extends EventEmitter {
       const agent = this.agents.get(agentId)
       if (agent && !agent.sessionId) {
         agent.sessionId = event.session_id
+        // Persist provenance now that we know which session this agent owns.
+        this._writeProvenance(agentId, event.session_id)
       }
     }
 

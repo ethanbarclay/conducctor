@@ -1,5 +1,5 @@
-import { type ReactNode, useMemo } from 'react';
-import { Folder, MessageSquare, Search, Cpu } from 'lucide-react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Folder, MessageSquare, Search, Cpu, Clock, GitBranch } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import { ScrollArea } from '../../../../shared/view/ui';
 import type { Project, ProjectSession } from '../../../../types/app';
@@ -7,12 +7,46 @@ import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import type { ConversationSearchResults, SearchProgress } from '../../hooks/useSidebarController';
 import { getAllSessions, getSessionDate, getSessionName } from '../../utils/utils';
 import { useConductorWebSocket } from '../../../orchestration/hooks/useConductorWebSocket';
+import { api } from '../../../../utils/api';
 import SidebarFooter from './SidebarFooter';
 import SidebarHeader from './SidebarHeader';
 import SidebarProjectList, { type SidebarProjectListProps } from './SidebarProjectList';
 
+type AgentMeta = { agentId: string; role: string; status: string };
+
+type ProvenanceOrigin = 'manual_agent' | 'scheduled' | 'mcp_spawn' | 'user_chat';
+
+type Provenance = {
+  origin: ProvenanceOrigin;
+  role?: string | null;
+  parentRole?: string | null;
+  parentSessionId?: string | null;
+  scheduledTaskName?: string | null;
+};
+
+type ProvenanceRow = {
+  session_id: string;
+  origin: ProvenanceOrigin;
+  role: string | null;
+  agent_id: string | null;
+  parent_session_id: string | null;
+  parent_agent_id: string | null;
+  parent_role: string | null;
+  scheduled_task_id: number | null;
+  scheduled_task_name: string | null;
+  project_id: string | null;
+  created_at: number;
+};
+
 type FlatItem =
-  | { kind: 'session'; session: ProjectSession & { __provider?: string }; projectName: string; projectDisplayName: string }
+  | {
+      kind: 'session';
+      session: ProjectSession & { __provider?: string };
+      projectName: string;
+      projectDisplayName: string;
+      agent?: AgentMeta;
+      provenance?: Provenance;
+    }
   | { kind: 'agent'; agentId: string; role: string; status: string; projectId: string; startedAt: number };
 
 type SearchMode = 'projects' | 'conversations';
@@ -105,26 +139,68 @@ export default function SidebarContent({
   // Conductor agents for sidebar integration
   const { agents: conductorAgents } = useConductorWebSocket();
 
+  // Persistent session provenance (origin, parent links, scheduled task names).
+  // Fetched once on mount and refreshed whenever the conductor agent list
+  // changes (a new spawn writes a new row).
+  const [provenanceMap, setProvenanceMap] = useState<Map<string, Provenance>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    api.sessionProvenance()
+      .then((r: Response) => (r.ok ? r.json() : { provenance: [] }))
+      .then((data: { provenance?: ProvenanceRow[] }) => {
+        if (cancelled) return;
+        const next = new Map<string, Provenance>();
+        for (const row of data.provenance || []) {
+          next.set(row.session_id, {
+            origin: row.origin,
+            role: row.role,
+            parentRole: row.parent_role,
+            parentSessionId: row.parent_session_id,
+            scheduledTaskName: row.scheduled_task_name,
+          });
+        }
+        setProvenanceMap(next);
+      })
+      .catch(() => { /* ignore — sidebar still works without provenance */ });
+    return () => { cancelled = true; };
+  }, [conductorAgents.length]);
+
   // Flat recency-sorted sessions + conductor agents
   const flatItems = useMemo((): FlatItem[] => {
     if (!showFlatConversations) return [];
     const items: FlatItem[] = [];
 
-    // Add sessions
+    // Index conductor agents by sessionId so we can merge them into their
+    // persisted session entry rather than showing a separate row.
+    const agentBySessionId = new Map<string, typeof conductorAgents[number]>();
+    for (const agent of conductorAgents) {
+      if (agent.sessionId) agentBySessionId.set(agent.sessionId, agent);
+    }
+    const matchedSessionIds = new Set<string>();
+
+    // Add sessions (decorated with agent + provenance metadata if available)
     for (const project of projects) {
       const sessions = getAllSessions(project, {});
       for (const session of sessions) {
+        const matchedAgent = agentBySessionId.get(session.id);
+        if (matchedAgent) matchedSessionIds.add(session.id);
         items.push({
           kind: 'session',
           session,
           projectName: project.name,
           projectDisplayName: project.displayName || project.name,
+          agent: matchedAgent
+            ? { agentId: matchedAgent.agentId, role: matchedAgent.role, status: matchedAgent.status }
+            : undefined,
+          provenance: provenanceMap.get(session.id),
         });
       }
     }
 
-    // Add conductor agents
+    // Only show standalone agent rows for agents whose session .jsonl
+    // hasn't been persisted yet (e.g. just-spawned agents).
     for (const agent of conductorAgents) {
+      if (agent.sessionId && matchedSessionIds.has(agent.sessionId)) continue;
       items.push({
         kind: 'agent',
         agentId: agent.agentId,
@@ -143,7 +219,7 @@ export default function SidebarContent({
     });
 
     return items.slice(0, 50);
-  }, [showFlatConversations, projects, conductorAgents]);
+  }, [showFlatConversations, projects, conductorAgents, provenanceMap]);
 
   return (
     <div
@@ -228,8 +304,8 @@ export default function SidebarContent({
                   );
                 }
 
-                // Regular session
-                const { session, projectName, projectDisplayName } = item;
+                // Regular session (possibly agent-backed)
+                const { session, projectName, projectDisplayName, agent, provenance } = item;
                 const sessionDate = getSessionDate(session);
                 const now = new Date();
                 const diffMin = Math.floor((now.getTime() - sessionDate.getTime()) / 60000);
@@ -238,6 +314,45 @@ export default function SidebarContent({
                   : diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago`
                   : `${Math.floor(diffMin / 1440)}d ago`;
                 const isActive = diffMin < 10;
+                const agentRunning = agent?.status === 'running';
+
+                // Pick the icon + label that best describes this conversation's origin.
+                // Provenance (persistent) wins; live agent status is a secondary signal.
+                let originIcon: ReactNode = null;
+                let originBadge: ReactNode = null;
+                let displayTitle: ReactNode = getSessionName(session, t);
+
+                if (provenance?.origin === 'scheduled') {
+                  originIcon = <Clock className="h-3 w-3 shrink-0 text-amber-400" />;
+                  originBadge = (
+                    <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-medium text-amber-400">
+                      scheduled
+                    </span>
+                  );
+                  if (provenance.scheduledTaskName) {
+                    displayTitle = <span className="capitalize">{provenance.scheduledTaskName}</span>;
+                  }
+                } else if (provenance?.origin === 'mcp_spawn') {
+                  originIcon = <GitBranch className="h-3 w-3 shrink-0 text-emerald-400" />;
+                  originBadge = (
+                    <span className="shrink-0 rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-medium text-emerald-400">
+                      sub-agent
+                    </span>
+                  );
+                  if (provenance.role) {
+                    displayTitle = <span className="capitalize">{provenance.role}</span>;
+                  }
+                } else if (provenance?.origin === 'manual_agent' || agent) {
+                  originIcon = <Cpu className="h-3 w-3 shrink-0 text-purple-400" />;
+                  originBadge = (
+                    <span className="shrink-0 rounded bg-purple-500/20 px-1 py-0.5 text-[9px] font-medium text-purple-400">
+                      agent
+                    </span>
+                  );
+                  if (provenance?.role || agent?.role) {
+                    displayTitle = <span className="capitalize">{provenance?.role || agent?.role}</span>;
+                  }
+                }
 
                 return (
                   <button
@@ -252,17 +367,22 @@ export default function SidebarContent({
                     )}
                   >
                     <div className="flex items-center gap-1.5">
-                      {isActive && (
+                      {agentRunning && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse" />
+                      )}
+                      {!agentRunning && !provenance && isActive && (
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
                       )}
+                      {originIcon}
                       <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                        {getSessionName(session, t)}
+                        {displayTitle}
                       </span>
                       {session.__provider && session.__provider !== 'claude' && (
                         <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase text-muted-foreground">
                           {session.__provider}
                         </span>
                       )}
+                      {originBadge}
                       <span className="shrink-0 text-[10px] text-muted-foreground">{timeLabel}</span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 pl-0">
