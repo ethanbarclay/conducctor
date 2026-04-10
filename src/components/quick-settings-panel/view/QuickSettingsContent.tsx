@@ -17,7 +17,6 @@ import type {
 import { getClaudeSettings, CLAUDE_SETTINGS_KEY, safeLocalStorage } from '../../chat/utils/chatStorage';
 import QuickSettingsSection from './QuickSettingsSection';
 import QuickSettingsToggleRow from './QuickSettingsToggleRow';
-import QuickSettingsWhisperSection from './QuickSettingsWhisperSection';
 
 type QuickSettingsContentProps = {
   isDarkMode: boolean;
@@ -122,8 +121,6 @@ export default function QuickSettingsContent({
           </p>
         )}
       </QuickSettingsSection>
-
-      <QuickSettingsWhisperSection />
     </div>
   );
 }
