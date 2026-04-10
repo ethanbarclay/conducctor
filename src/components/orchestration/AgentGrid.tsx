@@ -91,9 +91,18 @@ function AgentActivity({ events }: { events: AgentEvent[] }) {
     );
   }
 
+  // Sort newest-first with id as a stable tie-breaker. Multiple events from a
+  // single assistant turn (thinking → tool_use → tool_result) often share the
+  // same Date.now() timestamp; relying on Array.reverse() leaves their order
+  // dependent on arrival sequence and breaks visually.
+  const sortedEvents = [...events].sort((a, b) => {
+    if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
+    return b.id - a.id;
+  });
+
   return (
     <div className="max-h-48 space-y-0.5 overflow-y-auto">
-      {[...events].reverse().map((evt) => {
+      {sortedEvents.map((evt) => {
         const depth = evt.depth || 0;
         return (
         <div

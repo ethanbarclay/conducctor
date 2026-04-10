@@ -1480,7 +1480,33 @@ function handlePluginWsProxy(clientWs, pathname) {
 // ─── Conductor: broadcast agent events to all /conductor-ws clients ──────────
 const conductorClients = new Set();
 
+// Per-agent ring buffer of recent agent activity events. Replayed to clients on
+// connect so the activity feed survives page reloads / navigation away and back.
+// Sized at ~150 events per agent (frontend currently caps display at 50).
+const EVENT_BUFFER_LIMIT = 150;
+const agentEventBuffers = new Map(); // agentId → Array<{type, ...payload}>
+
+function bufferAgentEvent(type, payload) {
+    const agentId = payload?.agentId || payload?.sessionId;
+    if (!agentId) return;
+    let buf = agentEventBuffers.get(agentId);
+    if (!buf) {
+        buf = [];
+        agentEventBuffers.set(agentId, buf);
+    }
+    buf.push({ type, ...payload });
+    if (buf.length > EVENT_BUFFER_LIMIT) {
+        buf.splice(0, buf.length - EVENT_BUFFER_LIMIT);
+    }
+}
+
 function broadcastConductorEvent(type, payload) {
+    if (type === 'agent:event' || type === 'hook:event') {
+        bufferAgentEvent(type, payload);
+    }
+    if (type === 'agent:killed' && payload?.agentId) {
+        agentEventBuffers.delete(payload.agentId);
+    }
     const message = JSON.stringify({ type, ...payload, timestamp: Date.now() });
     conductorClients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -1516,10 +1542,18 @@ function handleConductorConnection(ws) {
     conductorClients.add(ws);
     ws.on('close', () => conductorClients.delete(ws));
 
-    // Send current agent list on connect
+    // Flatten buffered events across all agents — each agent's events stay in
+    // chronological order locally, which is what the per-agent feeds need.
+    const recentEvents = [];
+    for (const buf of agentEventBuffers.values()) {
+        recentEvents.push(...buf);
+    }
+
+    // Send current agent list + buffered activity on connect
     ws.send(JSON.stringify({
         type: 'conductor:init',
         agents: processManager.list(),
+        recentEvents,
         timestamp: Date.now(),
     }));
 }

@@ -129,6 +129,13 @@ export function useConductorWebSocket() {
           contextPct: deriveContextPct(a as Agent),
         })),
       }));
+      // Replay buffered events from the server so the activity feed survives
+      // page reload / navigation. Each event re-enters this handler and runs
+      // the same agent:event / hook:event extraction as live events.
+      const recent = (data.recentEvents as Array<Record<string, unknown>>) || [];
+      for (const evt of recent) {
+        handleMessage(evt);
+      }
       return;
     }
 
